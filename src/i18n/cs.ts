@@ -110,6 +110,12 @@ export const cs = {
     'Praha: Pařížská',
   ],
   decks: { tip: 'Tip od kámoše', urad: 'Finanční úřad' },
+  /** Nápisy ve 3D městě. */
+  city: {
+    startSign: 'VÝPLATA',
+    kioskSign: 'TIPY',
+    signs: ['ZASTAVÁRNA', 'HERNA', 'BAZAR', 'EXEKUCE', 'KASINO', 'LEASING', 'NON-STOP', 'DOTACE'],
+  },
   cards: {
     tip: [
       'Kámoš má volnou garsonku na Pařížské, prý za hubičku. Jedeš se podívat. Postup na Pařížskou.',
@@ -203,7 +209,10 @@ export const cs = {
     quitConfirm: 'Opravdu ukončit rozehranou partii?',
     log: 'Co se děje',
     you: 'ty',
-    hints: 'Klik na políčko: detail. Zlatý rámeček: můžeš stavět. Mezerník: hlavní volba.',
+    hints:
+      'Klik na políčko: detail. Zlatý rámeček: můžeš stavět. Myš: otáčení a zoom. Mezerník: hlavní volba.',
+    driving: 'Auto je na cestě…',
+    resetCamera: 'Vycentrovat',
     yourTurn: 'Jsi na řadě!',
     onTurn: (name: string) => `Hraje ${name}`,
   },

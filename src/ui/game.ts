@@ -29,6 +29,8 @@ import { BotRunner } from '../bots/runner';
 import { LocalTransport } from '../net/local';
 import type { GameTransport } from '../net/transport';
 import { publishGameEnd, summarizeGame } from '../profile/profile';
+import { CityView } from '../render/city-view';
+import { footText } from '../render/tile-info';
 import { PLAYER_COLORS, renderBoard, shortTileName, tileColor } from './board';
 import { escapeHtml } from './html';
 import { formatEvent, quipFor } from './log';
@@ -61,6 +63,10 @@ export class GameScreen {
   private endPublished = false;
   private readonly lines: { text: string; cls: string; color: string }[] = [];
   private lastSeq = 0;
+  /** `null` znamená, že prohlížeč neumí WebGL a hraje se na 2D desce. */
+  private readonly view: CityView | null;
+  private readonly ui: HTMLElement;
+  private readonly tooltip: HTMLElement;
 
   constructor(
     private readonly root: HTMLElement,
@@ -68,7 +74,15 @@ export class GameScreen {
     private readonly me: PlayerId,
     private readonly callbacks: { onExit: () => void; onNewGame: () => void },
   ) {
+    this.root.innerHTML = `
+      <div class="scene-host"></div>
+      <div class="tile-tooltip" hidden></div>
+      <div class="ui"></div>`;
+    this.ui = this.root.querySelector<HTMLElement>('.ui')!;
+    this.tooltip = this.root.querySelector<HTMLElement>('.tile-tooltip')!;
+    this.view = this.createView(state);
     this.transport = new LocalTransport(state);
+    // Pořadí je důležité: město se musí překreslit dřív, než si bot spočítá čekání na auto.
     this.transport.subscribe(() => this.render());
     this.bots = new BotRunner(this.transport, (s) => this.delay(s));
     this.root.onclick = (event) => this.onClick(event);
@@ -79,14 +93,53 @@ export class GameScreen {
 
   stop(): void {
     this.bots.stop();
+    this.view?.dispose();
     this.root.onclick = null;
     this.root.oninput = null;
     this.root.onsubmit = null;
   }
 
+  private createView(state: GameState): CityView | null {
+    const host = this.root.querySelector<HTMLElement>('.scene-host')!;
+    try {
+      return new CityView(host, state, {
+        onTileClick: (tile) => this.toggleTile(tile),
+        onHover: (tile, x, y) => this.showTooltip(tile, x, y),
+        onIdle: () => this.render(),
+      });
+    } catch (error) {
+      console.warn('3D město nejde spustit, hraje se na 2D desce.', error);
+      host.remove();
+      return null;
+    }
+  }
+
+  private toggleTile(tile: TileId): void {
+    this.selectedTile = this.selectedTile === tile ? null : tile;
+    this.render();
+  }
+
+  private showTooltip(tile: TileId | null, x: number, y: number): void {
+    if (tile === null) {
+      this.tooltip.hidden = true;
+      return;
+    }
+    const foot = footText(this.state, tile);
+    const owner = this.state.deeds[tile]?.owner ?? null;
+    const ownerName = owner === null ? '' : (this.state.players[owner]?.name ?? '');
+    this.tooltip.innerHTML = `
+      <strong>${cs.tiles[tile] ?? ''}</strong>
+      ${foot ? `<small>${foot}</small>` : ''}
+      ${ownerName ? `<small>${cs.tile.owner}: ${escapeHtml(ownerName)}</small>` : ''}`;
+    this.tooltip.style.left = `${x + 14}px`;
+    this.tooltip.style.top = `${y + 14}px`;
+    this.tooltip.hidden = false;
+  }
+
   private delay(s: GameState): number {
     const base = SPEED_MS[this.speed];
-    return s.auction || s.trade ? Math.ceil(base / 2) : base;
+    const wait = s.auction || s.trade ? Math.ceil(base / 2) : base;
+    return wait + (this.view?.remainingMs ?? 0);
   }
 
   private get state(): GameState {
@@ -147,10 +200,14 @@ export class GameScreen {
       this.endPublished = true;
       publishGameEnd(summarizeGame(s));
     }
-    const focus = this.root.querySelector<HTMLElement>('.log')?.scrollTop ?? 0;
-    this.root.innerHTML = `
-      <div class="game">
-        ${renderBoard(s, this.me, this.renderCenter(s))}
+    this.view?.update(s, this.me, this.selectedTile);
+    const focus = this.ui.querySelector<HTMLElement>('.log')?.scrollTop ?? 0;
+    const stage = this.view
+      ? `<div class="hud">${this.renderCenter(s)}</div>`
+      : renderBoard(s, this.me, this.renderCenter(s));
+    this.ui.innerHTML = `
+      <div class="game${this.view ? ' in-city' : ''}">
+        ${stage}
         <aside class="side">
           ${this.renderPlayers(s)}
           <section class="panel actions">${this.renderActions(s)}</section>
@@ -159,7 +216,7 @@ export class GameScreen {
       </div>
       ${this.draft ? this.renderTradeDialog(s, this.draft) : ''}
       ${s.phase === 'gameOver' ? this.renderResult(s) : ''}`;
-    const log = this.root.querySelector<HTMLElement>('.log');
+    const log = this.ui.querySelector<HTMLElement>('.log');
     if (log) log.scrollTop = focus;
   }
 
@@ -217,6 +274,7 @@ export class GameScreen {
       <div class="center-head">
         <h1 class="logo small">${cs.title}</h1>
         <span class="round">${cs.game.round(s.round)}</span>
+        ${this.view ? `<button class="chip" data-action="resetCamera">${cs.game.resetCamera}</button>` : ''}
       </div>
       ${banner}
       <div class="table">
@@ -297,6 +355,8 @@ export class GameScreen {
     if (actor !== this.me) {
       return `${s.auction ? this.renderAuctionInfo(s) : ''}<p class="waiting">${cs.game.waiting(escapeHtml(s.players[actor ?? 0]!.name))}</p>`;
     }
+    // Volby čekají, až auto dojede, ať je vidět, kde hráč vlastně stojí.
+    if (this.view?.busy) return `<p class="waiting">${cs.game.driving}</p>`;
     if (s.trade) return this.renderIncomingTrade(s);
     const debt = s.debts[0];
     if (debt) {
@@ -617,11 +677,7 @@ export class GameScreen {
       return;
     }
     const tileEl = target.closest<HTMLElement>('[data-tile]');
-    if (tileEl) {
-      const id = Number(tileEl.dataset.tile);
-      this.selectedTile = this.selectedTile === id ? null : id;
-      this.render();
-    }
+    if (tileEl) this.toggleTile(Number(tileEl.dataset.tile));
   }
 
   private handleAction(el: HTMLElement): void {
@@ -666,8 +722,12 @@ export class GameScreen {
         break;
       case 'speed':
         this.speed = el.dataset.speed as Speed;
+        this.view?.setSpeed(this.speed);
         this.bots.refresh();
         break;
+      case 'resetCamera':
+        this.view?.resetCamera();
+        return;
       case 'quit':
         if (this.state.phase === 'gameOver' || window.confirm(cs.game.quitConfirm)) {
           this.callbacks.onExit();
