@@ -16,19 +16,12 @@ Pravidlo pro všechny fáze: fáze je hotová, až když jde všechno, co přid�
 - [x] Jednoduché 2D UI: menu, lobby, deska, správa majetku, obchody, aukce
 - [x] Celá partie v sólu proti 1–3 botům
 
+Pořadí fází: 2 → 4 → 3 → 5 a dál. Multiplayer jde až po byznysové vrstvě, aby se nemusela každá nová mechanika testovat i přes síť.
+
 ## Fáze 2 — 3D město
 
-- [ ] Low-poly deska jako město, auta jako figurky
-- [ ] Animace pohybu a kamera
-- [ ] Archetypy podnikatelů s pasivními schopnostmi
-- [ ] Doladění satirických karet a textů
-
-## Fáze 3 — Multiplayer
-
-- [ ] Lobby s kódem místnosti a odkazem
-- [ ] TrysteroTransport, host-authoritative
-- [ ] Boti doplní prázdná místa, člověk může převzít bota
-- [ ] Rozšířené nastavení partie
+- [x] Low-poly deska jako město na plovoucím ostrově, auta jako figurky
+- [x] Animace pohybu a kamera
 
 ## Fáze 4 — Byznysová vrstva (režim MONOPOLIS)
 
@@ -37,6 +30,15 @@ Pravidlo pro všechny fáze: fáze je hotová, až když jde všechno, co přid�
 - [ ] Korupce a úplatky
 - [ ] Burza a pump & dump
 - [ ] Vězení a pokuty za odhalení
+- [ ] Archetypy podnikatelů s pasivními schopnostmi (přesunuto z Fáze 2, stojí na burze, úplatcích a praní)
+- [ ] Doladění satirických karet a textů
+
+## Fáze 3 — Multiplayer
+
+- [ ] Lobby s kódem místnosti a odkazem
+- [ ] TrysteroTransport, host-authoritative
+- [ ] Boti doplní prázdná místa, člověk může převzít bota
+- [ ] Rozšířené nastavení partie
 
 ## Fáze 5 — Framework miniher a honička autem
 

@@ -123,7 +123,7 @@ Dva balíčky po 16 kartách. Texty jsou v `src/i18n/cs.ts`, efekty v `src/core/
 
 Obtížnost ovlivňuje ocenění celých měst, ochotu nabízet obchody a opatrnost při dávání soupeři celého města. Bot se rozhoduje jen z veřejného stavu a jeho rozhodnutí jsou deterministická vzhledem ke stavu. S přibývajícími koly boti snižují přirážku za prodej pozemku soupeři, aby se partie nezasekla.
 
-## 6. Archetypy (Fáze 2)
+## 6. Archetypy (Fáze 4)
 
 | Archetyp      | Pasivní schopnost (návrh)                                           |
 | ------------- | ------------------------------------------------------------------- |
@@ -154,6 +154,8 @@ Burza: každé město je firma, počáteční cena akcie 10 000 Kč. Stavba v m�
 
 Každá minihra je plugin s `start(context) → Promise<result>`, AI a lidským controllerem pro každou roli a s `autoResolve()`.
 
+Délka podle důležitosti: běžné situace (honička, útěk z vězení) jsou krátké arkády na 30–60 sekund, velké heisty jsou delší mise o více fázích. Obojí se dá přeskočit přes `autoResolve()`. Minihry běží ve 3D ve stejném stylu jako město (viz kapitola 10).
+
 | Minihra              | Spouštěč                  | Výsledek                                | Auto-resolve (návrh) |
 | -------------------- | ------------------------- | --------------------------------------- | -------------------- |
 | Honička autem        | Cizí pozemek, místo nájmu | Ujedeš: neplatíš. Chytí tě: dvojnásobek | Šance na útěk 45 %   |
@@ -164,3 +166,12 @@ Každá minihra je plugin s `start(context) → Promise<result>`, AI a lidským 
 ## 9. Progrese
 
 Zatím žádná. `src/profile/` obsahuje úložiště za rozhraním (localStorage) a událost konce partie, na kterou se později napojí statistiky a odemykání.
+
+## 10. Vizuální styl
+
+- **Mapa:** město-diorama na plovoucím ostrově. Silnice tvoří čtvercový okruh jako deska, pozemky jsou parcely na vnější straně silnice a uprostřed stojí centrum s věžáky. Vrstvená skála pod ostrovem a menší ostrovy v oparu.
+- **Vzhled:** low-poly s plochým stínováním, výrazné tvary, žádné realistické textury. Modely vznikají přímo v kódu, takže nejsou potřeba externí assety.
+- **Atmosféra:** teplý písečný soumrak s oparem, rozsvícená okna a neonové reklamy. Paleta je v `src/render/palette.ts`, případná noční varianta je změna palety.
+- **Kamera:** šikmý přehled na celé město, při jízdě se přiblíží k autu a vrátí se. Myší jde otáčet a přibližovat.
+- **Rozhraní:** tlusté bílé číslice a kostky přímo nad scénou, panely jen tam, kde je potřeba číst nebo klikat.
+- **Minihry a postavy:** stejný low-poly jazyk, přehnané pózy, výbuchy a záře, ale vlastní postavy a prostředí.
