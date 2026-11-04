@@ -4,6 +4,15 @@ export function formatMoney(amount: number): string {
   return `${amount.toLocaleString('cs-CZ').replace(/\s/g, '\u00a0')}\u00a0Kč`;
 }
 
+/** Krátký zápis pro políčka desky, např. 130 tis. nebo 1,2 mil. */
+export function formatMoneyShort(amount: number): string {
+  if (amount >= 1_000_000) {
+    const millions = (amount / 1_000_000).toLocaleString('cs-CZ', { maximumFractionDigits: 2 });
+    return `${millions}\u00a0mil.`;
+  }
+  return `${(amount / 1000).toLocaleString('cs-CZ', { maximumFractionDigits: 1 })}\u00a0tis.`;
+}
+
 /** Všechny texty hry. Další jazyk přibude jako další soubor se stejnou strukturou. */
 export const cs = {
   title: 'MONOPOLIS',
@@ -185,16 +194,18 @@ export const cs = {
     inJail: 've vazbě',
     isBankrupt: 'bankrot',
     youBankrupt: 'Zbankrotoval jsi. Dohraje se to bez tebe.',
-    speed: 'Rychlost botů',
+    speed: 'Boti',
     speedNormal: 'Normální',
     speedFast: 'Rychlá',
     speedTurbo: 'Turbo',
     close: 'Zavřít',
-    quit: 'Ukončit partii',
+    quit: 'Konec',
     quitConfirm: 'Opravdu ukončit rozehranou partii?',
     log: 'Co se děje',
     you: 'ty',
-    hints: 'Klikni na políčko pro detail. Mezerník potvrdí hlavní volbu.',
+    hints: 'Klik na políčko: detail. Zlatý rámeček: můžeš stavět. Mezerník: hlavní volba.',
+    yourTurn: 'Jsi na řadě!',
+    onTurn: (name: string) => `Hraje ${name}`,
   },
   tile: {
     price: 'Cena',
@@ -212,6 +223,10 @@ export const cs = {
     utilityOne: 'Kostky × 4 000 Kč',
     utilityBoth: 'Oba podniky: kostky × 10 000 Kč',
     tax: 'Daň',
+    footSalary: '+200 tis.',
+    footMortgaged: 'zastaveno',
+    footRent: (amount: string) => `nájem ${amount}`,
+    footUtility: (rate: string) => `kostky × ${rate}`,
     build: (cost: string) => `Postavit za ${cost}`,
     sell: (value: string) => `Prodat budovu za ${value}`,
     mortgage: (value: string) => `Zastavit za ${value}`,
@@ -235,6 +250,8 @@ export const cs = {
     gameStart: 'Partie začíná. Hodně štěstí u soudu.',
     turnStart: (name: string, round: number) => `Kolo ${round}: na tahu je ${name}.`,
     roll: (name: string, a: number, b: number) => `${name} hodil ${a} + ${b}.`,
+    rollMove: (name: string, a: number, b: number, tile: string) =>
+      `${name} hodil ${a} + ${b} a jede na ${tile}.`,
     move: (name: string, tile: string) => `${name} jede na ${tile}.`,
     passStart: (name: string, amount: string) => `${name} dostal výplatu ${amount}.`,
     buy: (name: string, tile: string, price: string) => `${name} koupil ${tile} za ${price}.`,

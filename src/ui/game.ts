@@ -1,4 +1,5 @@
 import {
+  GROUP_ORDER,
   HOTEL_LEVEL,
   JAIL_BAIL,
   MIN_BID_STEP,
@@ -15,17 +16,20 @@ import {
   mortgageValue,
   netWorth,
   ownablePrice,
+  ownsWholeGroup,
+  groupTiles,
+  tilesOfKind,
   tileAt,
   tilesOwnedBy,
   unmortgageCost,
 } from '../core';
-import type { Action, GameState, PlayerId, TileId, TradeSide } from '../core';
+import type { Action, GameEvent, GameState, PlayerId, TileId, TradeSide } from '../core';
 import { cs, formatMoney } from '../i18n/cs';
 import { BotRunner } from '../bots/runner';
 import { LocalTransport } from '../net/local';
 import type { GameTransport } from '../net/transport';
 import { publishGameEnd, summarizeGame } from '../profile/profile';
-import { PLAYER_COLORS, groupColor, renderBoard } from './board';
+import { PLAYER_COLORS, renderBoard, shortTileName, tileColor } from './board';
 import { escapeHtml } from './html';
 import { formatEvent, quipFor } from './log';
 
@@ -37,7 +41,7 @@ interface TradeDraft {
 }
 
 type Speed = 'normal' | 'fast' | 'turbo';
-const SPEED_MS: Record<Speed, number> = { normal: 750, fast: 200, turbo: 15 };
+const SPEED_MS: Record<Speed, number> = { normal: 900, fast: 200, turbo: 15 };
 
 function emptySide(): TradeSide {
   return { tiles: [], cash: 0, jailCards: 0 };
@@ -55,7 +59,7 @@ export class GameScreen {
   private draft: TradeDraft | null = null;
   private speed: Speed = 'normal';
   private endPublished = false;
-  private readonly lines: { seq: number; text: string; cls: string }[] = [];
+  private readonly lines: { text: string; cls: string; color: string }[] = [];
   private lastSeq = 0;
 
   constructor(
@@ -93,19 +97,46 @@ export class GameScreen {
     this.transport.dispatch(action);
   }
 
+  private addLine(text: string, cls: string, player: PlayerId | null): void {
+    const color = player === null ? 'transparent' : (PLAYER_COLORS[player] ?? 'transparent');
+    this.lines.unshift({ text, cls, color });
+  }
+
   private collectLog(s: GameState): void {
+    let pendingRoll: Extract<GameEvent, { type: 'roll' }> | null = null;
+    const flushRoll = () => {
+      if (pendingRoll) this.addLine(formatEvent(s, pendingRoll), '', pendingRoll.player);
+      pendingRoll = null;
+    };
     for (const event of s.events) {
       if (event.seq <= this.lastSeq) continue;
       this.lastSeq = event.seq;
+      if (event.type === 'roll') {
+        flushRoll();
+        pendingRoll = event;
+        continue;
+      }
+      if (event.type === 'move') {
+        // Hod a pohyb patří k sobě, takže ve výpisu tvoří jeden řádek.
+        if (pendingRoll?.player === event.player) {
+          const [a, b] = pendingRoll.dice;
+          const name = s.players[event.player]?.name ?? '';
+          this.addLine(cs.log.rollMove(name, a, b, cs.tiles[event.tile] ?? ''), '', event.player);
+          pendingRoll = null;
+        } else {
+          flushRoll();
+          this.addLine(formatEvent(s, event), '', event.player);
+        }
+        continue;
+      }
+      if (event.type !== 'passStart') flushRoll();
       const important = ['bankrupt', 'gameOver', 'turnStart'].includes(event.type);
-      this.lines.unshift({
-        seq: event.seq,
-        text: formatEvent(s, event),
-        cls: important ? `log-${event.type}` : '',
-      });
+      const player = 'player' in event ? event.player : 'from' in event ? event.from : null;
+      this.addLine(formatEvent(s, event), important ? `log-${event.type}` : '', player);
       const quip = quipFor(s, event);
-      if (quip) this.lines.unshift({ seq: event.seq, text: quip, cls: 'log-quip' });
+      if (quip) this.addLine(quip, 'log-quip', event.type === 'rent' ? event.owner : player);
     }
+    flushRoll();
     this.lines.length = Math.min(this.lines.length, 60);
   }
 
@@ -119,7 +150,7 @@ export class GameScreen {
     const focus = this.root.querySelector<HTMLElement>('.log')?.scrollTop ?? 0;
     this.root.innerHTML = `
       <div class="game">
-        ${renderBoard(s, this.renderCenter(s))}
+        ${renderBoard(s, this.me, this.renderCenter(s))}
         <aside class="side">
           ${this.renderPlayers(s)}
           <section class="panel actions">${this.renderActions(s)}</section>
@@ -132,22 +163,100 @@ export class GameScreen {
     if (log) log.scrollTop = focus;
   }
 
+  private renderDie(value: number): string {
+    const pips: Record<number, number[]> = {
+      1: [4],
+      2: [0, 8],
+      3: [0, 4, 8],
+      4: [0, 2, 6, 8],
+      5: [0, 2, 4, 6, 8],
+      6: [0, 2, 3, 5, 6, 8],
+    };
+    const cells = Array.from(
+      { length: 9 },
+      (_, i) => `<span class="${pips[value]?.includes(i) ? 'dot' : ''}"></span>`,
+    ).join('');
+    return `<div class="die" aria-label="${value}">${cells}</div>`;
+  }
+
+  /** Karta vytažená v tomto tahu. Zůstává ve středu, dokud nezačne další tah. */
+  private currentCard(s: GameState): Extract<GameEvent, { type: 'card' }> | null {
+    for (let i = s.events.length - 1; i >= 0; i--) {
+      const event = s.events[i]!;
+      if (event.type === 'turnStart') return null;
+      if (event.type === 'card') return event;
+    }
+    return null;
+  }
+
   private renderCenter(s: GameState): string {
+    const actor = actorOf(s);
+    const banner =
+      actor === null
+        ? ''
+        : `<div class="turn-banner${actor === this.me ? ' mine' : ''}" style="--c:${PLAYER_COLORS[actor]}">
+             ${actor === this.me ? cs.game.yourTurn : cs.game.onTurn(escapeHtml(s.players[actor]!.name))}
+           </div>`;
     const dice = s.lastRoll
-      ? `<div class="dice"><b>${s.lastRoll[0]}</b><b>${s.lastRoll[1]}</b></div>`
-      : '<div class="dice"></div>';
-    const detail = this.selectedTile === null ? '' : this.renderTileDetail(s, this.selectedTile);
+      ? `${this.renderDie(s.lastRoll[0])}${this.renderDie(s.lastRoll[1])}`
+      : `${this.renderDie(1)}${this.renderDie(1)}`;
+    const card = this.currentCard(s);
+    const deck = (id: 'tip' | 'urad', icon: string) =>
+      `<div class="deck deck-${id}${card?.deck === id ? ' drawn' : ''}"><span>${icon}</span><small>${cs.decks[id]}</small></div>`;
+    const cardView = card
+      ? `<div class="drawn-card deck-${card.deck}">
+           <strong>${cs.decks[card.deck]} · ${escapeHtml(s.players[card.player]?.name ?? '')}</strong>
+           <p>${cs.cards[card.deck][card.card] ?? ''}</p>
+         </div>`
+      : '';
+    const detail =
+      this.selectedTile === null
+        ? ''
+        : `<div class="tile-detail">${this.renderDeed(s, this.selectedTile, true)}</div>`;
     return `
       <div class="center-head">
         <h1 class="logo small">${cs.title}</h1>
-        <span>${cs.game.round(s.round)}</span>
-        ${dice}
+        <span class="round">${cs.game.round(s.round)}</span>
       </div>
+      ${banner}
+      <div class="table">
+        ${deck('tip', '🤫')}
+        <div class="dice">${dice}</div>
+        ${deck('urad', '🏛️')}
+      </div>
+      ${cardView}
       ${detail}
       <h3 class="log-title">${cs.game.log}</h3>
       <div class="log">
-        ${this.lines.map((line) => `<p class="${line.cls}">${escapeHtml(line.text)}</p>`).join('')}
+        ${this.lines
+          .map(
+            (line) =>
+              `<p class="${line.cls}" style="--c:${line.color}">${escapeHtml(line.text)}</p>`,
+          )
+          .join('')}
       </div>`;
+  }
+
+  /** Čtverečky všech pozemků: hned je vidět, co hráč má a co mu do města chybí. */
+  private renderHoldings(s: GameState, player: PlayerId): string {
+    const groups = [
+      ...GROUP_ORDER.map((group) => groupTiles(group)),
+      tilesOfKind('station'),
+      tilesOfKind('utility'),
+    ];
+    return groups
+      .map((tiles) => {
+        const cells = tiles
+          .map((tile) => {
+            const deed = s.deeds[tile];
+            const owned = deed?.owner === player;
+            const cls = `${owned ? 'has' : ''}${owned && deed?.mortgaged ? ' mort' : ''}`;
+            return `<button class="holding ${cls}" style="--c:${tileColor(tile).bg}" data-tile="${tile}" title="${cs.tiles[tile]}"></button>`;
+          })
+          .join('');
+        return `<span class="holding-group">${cells}</span>`;
+      })
+      .join('');
   }
 
   private renderPlayers(s: GameState): string {
@@ -164,8 +273,13 @@ export class GameScreen {
           .join(' · ');
         return `
           <div class="player${p.id === actor ? ' active' : ''}${p.bankrupt ? ' out' : ''}" style="--color:${PLAYER_COLORS[p.id]}">
-            <div class="player-head"><strong>${escapeHtml(p.name)}</strong><span>${formatMoney(p.cash)}</span></div>
+            <div class="player-head">
+              <i class="token" style="background:${PLAYER_COLORS[p.id]}">${escapeHtml(p.name.charAt(0).toUpperCase())}</i>
+              <strong>${escapeHtml(p.name)}</strong>
+              <span class="cash">${formatMoney(p.cash)}</span>
+            </div>
             <small>${flags}</small>
+            <div class="holdings">${this.renderHoldings(s, p.id)}</div>
           </div>`;
       })
       .join('');
@@ -199,7 +313,7 @@ export class GameScreen {
       const price = ownablePrice(s.pendingBuy) ?? 0;
       const affordable = me.cash >= price;
       return `
-        <h3>${cs.tiles[s.pendingBuy]}</h3>
+        ${this.renderDeed(s, s.pendingBuy, false)}
         ${button(cs.game.buy(formatMoney(price)), 'buy', affordable ? '' : 'disabled', affordable)}
         ${button(cs.game.decline, 'decline', '', !affordable)}
         ${this.tradeButton(s)}`;
@@ -227,7 +341,7 @@ export class GameScreen {
       auction.leader === null
         ? cs.game.auctionNoBid
         : cs.game.auctionBid(formatMoney(auction.bid), escapeHtml(s.players[auction.leader]!.name));
-    return `<h3>${cs.game.auctionInfo(cs.tiles[auction.tile] ?? '')}</h3><p>${status}</p>`;
+    return `<h3>${cs.game.auctionTitle}</h3>${this.renderDeed(s, auction.tile, false)}<p class="auction-status">${status}</p>`;
   }
 
   private renderAuction(s: GameState): string {
@@ -287,40 +401,52 @@ export class GameScreen {
       .join('');
     return `
       <section class="panel footer">
-        <div class="row"><span>${cs.game.speed}</span>${speeds}</div>
+        <div class="row between">
+          <div class="row"><span>${cs.game.speed}</span>${speeds}</div>
+          <button class="chip" data-action="quit">${cs.game.quit}</button>
+        </div>
         <small>${cs.game.hints}</small>
-        ${button(cs.game.quit, 'quit')}
       </section>`;
   }
 
-  private renderTileDetail(s: GameState, id: TileId): string {
+  /** Karta pozemku: záhlaví v barvě města, nájmy a u vlastních pozemků správa. */
+  private renderDeed(s: GameState, id: TileId, withControls: boolean): string {
     const tile = tileAt(id);
     const rows: string[] = [];
-    const row = (label: string, value: string) =>
-      rows.push(`<tr><td>${label}</td><td>${value}</td></tr>`);
+    const row = (label: string, value: string, now = false) =>
+      rows.push(`<tr${now ? ' class="now"' : ''}><td>${label}</td><td>${value}</td></tr>`);
     const deed = s.deeds[id];
-    if (deed) {
-      const owner = deed.owner === null ? cs.tile.noOwner : escapeHtml(s.players[deed.owner]!.name);
-      row(cs.tile.owner, owner);
-      row(cs.tile.price, formatMoney(ownablePrice(id) ?? 0));
-      row(cs.tile.mortgageValue, formatMoney(mortgageValue(id)));
-    }
-    let strip = '';
     let description = '';
+    let kicker = '';
     switch (tile.kind) {
-      case 'property':
-        strip = `style="border-top:6px solid ${groupColor(tile.group)}"`;
-        row(cs.tile.group, cs.groups[tile.group]);
-        row(cs.tile.rentBase, formatMoney(tile.rents[0]!));
-        row(cs.tile.rentSet, formatMoney(tile.rents[0]! * 2));
-        for (let n = 1; n < HOTEL_LEVEL; n++)
-          row(cs.tile.rentHouses(n), formatMoney(tile.rents[n]!));
-        row(cs.tile.rentHotel, formatMoney(tile.rents[HOTEL_LEVEL]!));
+      case 'property': {
+        kicker = cs.groups[tile.group];
+        const level = deed?.level ?? 0;
+        const whole = deed?.owner != null && ownsWholeGroup(s, deed.owner, id);
+        const owned = deed?.owner != null && !deed.mortgaged;
+        row(cs.tile.rentBase, formatMoney(tile.rents[0]!), owned && level === 0 && !whole);
+        row(cs.tile.rentSet, formatMoney(tile.rents[0]! * 2), owned && level === 0 && whole);
+        for (let n = 1; n < HOTEL_LEVEL; n++) {
+          row(cs.tile.rentHouses(n), formatMoney(tile.rents[n]!), owned && level === n);
+        }
+        row(
+          cs.tile.rentHotel,
+          formatMoney(tile.rents[HOTEL_LEVEL]!),
+          owned && level === HOTEL_LEVEL,
+        );
         row(cs.tile.houseCost, formatMoney(tile.houseCost));
         break;
-      case 'station':
-        STATION_RENTS.forEach((rent, i) => row(cs.tile.stationRents(i + 1), formatMoney(rent)));
+      }
+      case 'station': {
+        const count =
+          deed?.owner == null
+            ? 0
+            : tilesOfKind('station').filter((t) => s.deeds[t]?.owner === deed.owner).length;
+        STATION_RENTS.forEach((rent, i) =>
+          row(cs.tile.stationRents(i + 1), formatMoney(rent), !deed?.mortgaged && count === i + 1),
+        );
         break;
+      }
       case 'utility':
         description = `${cs.tile.utilityOne}<br>${cs.tile.utilityBoth}`;
         break;
@@ -337,8 +463,14 @@ export class GameScreen {
         description = cs.tile.description[tile.kind];
         break;
     }
+    if (deed && withControls) {
+      const owner = deed.owner === null ? cs.tile.noOwner : escapeHtml(s.players[deed.owner]!.name);
+      row(cs.tile.price, formatMoney(ownablePrice(id) ?? 0));
+      row(cs.tile.mortgageValue, formatMoney(mortgageValue(id)));
+      row(cs.tile.owner, deed.mortgaged ? `${owner} (${cs.tile.mortgaged})` : owner);
+    }
     const manage: string[] = [];
-    if (deed?.owner === this.me) {
+    if (withControls && deed?.owner === this.me) {
       if (tile.kind === 'property') {
         if (canBuild(s, this.me, id)) {
           manage.push(
@@ -369,9 +501,16 @@ export class GameScreen {
         );
       }
     }
+    const color = tileColor(id);
     return `
-      <div class="tile-detail" ${strip}>
-        <div class="row between"><h3>${cs.tiles[id]}</h3>${button(cs.game.close, 'closeTile', 'data-close')}</div>
+      <div class="deed">
+        <header style="background:${color.bg};color:${color.ink}">
+          <div>
+            ${kicker ? `<small>${kicker}</small>` : ''}
+            <strong>${shortTileName(id)}</strong>
+          </div>
+          ${withControls ? `<button class="deed-close" data-action="closeTile" aria-label="${cs.game.close}">×</button>` : ''}
+        </header>
         ${description ? `<p>${description}</p>` : ''}
         ${rows.length ? `<table>${rows.join('')}</table>` : ''}
         ${manage.length ? `<div class="manage">${manage.join('')}</div>` : ''}
