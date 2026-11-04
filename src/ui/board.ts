@@ -4,6 +4,7 @@ import { cs } from '../i18n/cs';
 import { PLAYER_COLORS } from '../render/palette';
 import { footText, iconFor, shortTileName, tileColor } from '../render/tile-info';
 import { escapeHtml } from './html';
+import { pawnSvg } from './pawns';
 
 export { PLAYER_COLORS, shortTileName, tileColor };
 
@@ -38,6 +39,7 @@ export function renderBoard(s: GameState, me: PlayerId, center: string): string 
   const actor = actorOf(s);
   const activeTile = actor === null ? null : s.players[actor]?.position;
   const focus = focusTile(s);
+  const classic = s.settings.mode === 'classic';
   const tiles = BOARD.map((tile, id) => {
     const { row, col } = gridPosition(id);
     const deed = s.deeds[id];
@@ -56,9 +58,10 @@ export function renderBoard(s: GameState, me: PlayerId, center: string): string 
     const ownerStyle = owner === null ? '' : `--owner:${PLAYER_COLORS[owner]};`;
     const tokens = s.players
       .filter((p) => !p.bankrupt && p.position === id)
-      .map(
-        (p) =>
-          `<i class="token${p.inJail ? ' jailed' : ''}" style="background:${PLAYER_COLORS[p.id]}" title="${escapeHtml(p.name)}">${escapeHtml(p.name.charAt(0).toUpperCase())}</i>`,
+      .map((p) =>
+        classic
+          ? `<i class="pawn${p.inJail ? ' jailed' : ''}" title="${escapeHtml(p.name)}">${pawnSvg(PLAYER_COLORS[p.id]!)}</i>`
+          : `<i class="token${p.inJail ? ' jailed' : ''}" style="background:${PLAYER_COLORS[p.id]}" title="${escapeHtml(p.name)}">${escapeHtml(p.name.charAt(0).toUpperCase())}</i>`,
       )
       .join('');
     const bar =
@@ -78,5 +81,5 @@ export function renderBoard(s: GameState, me: PlayerId, center: string): string 
         <span class="tokens">${tokens}</span>
       </button>`;
   }).join('');
-  return `<div class="board">${tiles}<div class="center">${center}</div></div>`;
+  return `<div class="board${classic ? ' classic' : ''}">${tiles}<div class="center">${center}</div></div>`;
 }

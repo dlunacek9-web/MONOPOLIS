@@ -1,4 +1,4 @@
-import { BOARD, ownablePrice, rentOf } from '../core';
+import { BOARD, currentMode, ownablePrice, rentOf } from '../core';
 import type { GameState, TileId } from '../core';
 import { cs, formatMoneyShort } from '../i18n/cs';
 import { GROUP_COLORS } from './palette';
@@ -38,8 +38,24 @@ export function tileCity(id: TileId): string {
   return name.slice(0, name.indexOf(':')).trim();
 }
 
+/** Ikony na desce Klasiky, blízké originálu. */
+const CLASSIC_ICONS: Partial<Record<(typeof BOARD)[number]['kind'], string>> = {
+  start: '⬅️',
+  station: '🚂',
+  tax: '💰',
+  jail: '🔒',
+  parking: '🚗',
+  goToJail: '👮',
+};
+
 export function iconFor(id: TileId): string {
   const tile = BOARD[id]!;
+  if (currentMode() === 'classic') {
+    if (tile.kind === 'card') return tile.deck === 'tip' ? '❓' : '🧰';
+    if (tile.kind === 'utility') return id === 12 ? '💡' : '🚰';
+    if (tile.kind === 'tax' && tile.amount === 100) return '💍';
+    return CLASSIC_ICONS[tile.kind] ?? '';
+  }
   if (tile.kind === 'card') return tile.deck === 'tip' ? '🤫' : '🏛️';
   if (tile.kind === 'utility') return id === 12 ? '⚡' : '🚰';
   return ICONS[tile.kind] ?? '';

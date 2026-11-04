@@ -67,7 +67,7 @@ export class GameScreen {
   private endPublished = false;
   private readonly lines: { text: string; cls: string; color: string }[] = [];
   private lastSeq = 0;
-  /** `null` znamená, že prohlížeč neumí WebGL a hraje se na 2D desce. */
+  /** `null` znamená 2D desku: režim Klasika, nebo prohlížeč bez WebGL. */
   private readonly view: CityView | null;
   private readonly ui: HTMLElement;
   private readonly tooltip: HTMLElement;
@@ -107,6 +107,11 @@ export class GameScreen {
 
   private createView(state: GameState): CityView | null {
     const host = this.root.querySelector<HTMLElement>('.scene-host')!;
+    // Klasika se hraje na ploché desce jako originál, 3D město patří režimu Next level.
+    if (state.settings.mode === 'classic') {
+      host.remove();
+      return null;
+    }
     try {
       return new CityView(host, state, {
         onTileClick: (tile) => this.toggleTile(tile),
@@ -286,9 +291,9 @@ export class GameScreen {
       </div>
       ${banner}
       <div class="table">
-        ${deck('tip', '🤫')}
+        ${deck('tip', s.settings.mode === 'classic' ? '❓' : '🤫')}
         <div class="dice">${dice}</div>
-        ${deck('urad', '🏛️')}
+        ${deck('urad', s.settings.mode === 'classic' ? '🧰' : '🏛️')}
       </div>
       ${cardView}
       ${detail}
