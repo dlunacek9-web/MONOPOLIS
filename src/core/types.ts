@@ -6,6 +6,7 @@ export type DeckId = 'tip' | 'urad';
 export type GameMode = 'classic' | 'nextlevel';
 export type Personality = 'zralok' | 'lakomec' | 'kriminalnik' | 'vyvazeny';
 export type Difficulty = 'easy' | 'normal' | 'hard';
+export type Archetype = 'developer' | 'kryptobro' | 'baron' | 'trafikant';
 
 export type Tile =
   | { kind: 'start' }
@@ -39,6 +40,8 @@ export interface PlayerSetup {
   name: string;
   /** Bez `bot` jde o lidského hráče. */
   bot?: BotConfig;
+  /** Pasivní schopnost. Používá ji jen sada s byznysovou vrstvou. */
+  archetype?: Archetype;
 }
 
 export interface Player {
@@ -53,6 +56,30 @@ export interface Player {
   jailCards: DeckId[];
   doublesCount: number;
   bankrupt: boolean;
+  /** Černé peníze. Jdou jen na úplatky, pump & dump a nájem na ruku. */
+  dirty: number;
+  shares: Partial<Record<GroupId, Holding>>;
+  archetype: Archetype | null;
+}
+
+/** Akcie jedné firmy. `cost` je celková pořizovací cena držených kusů. */
+export interface Holding {
+  count: number;
+  cost: number;
+}
+
+/** Běžící pump & dump. `turnsLeft` se odpočítává na začátku tahů viníka. */
+export interface Pump {
+  group: GroupId;
+  by: PlayerId;
+  turnsLeft: number;
+  /** Zisk viníka z prodejů během pumpy, při odhalení propadá. */
+  profit: number;
+}
+
+export interface Market {
+  prices: Record<GroupId, number>;
+  pumps: Pump[];
 }
 
 /** Vlastnictví pozemku. `level` je 0–4 domů, 5 znamená hotel. */
@@ -60,6 +87,8 @@ export interface Deed {
   owner: PlayerId | null;
   level: number;
   mortgaged: boolean;
+  /** Nájem na ruku: majitel ho dostane v černých, o přirážku vyšší. */
+  offBooks: boolean;
 }
 
 export interface Debt {
@@ -92,7 +121,9 @@ export interface TradeOffer {
   get: TradeSide;
 }
 
-export type Phase = 'awaitRoll' | 'awaitBuy' | 'awaitEnd' | 'gameOver';
+export type Phase = 'awaitRoll' | 'awaitBuy' | 'awaitTax' | 'awaitEnd' | 'gameOver';
+export type BribeKind = 'official' | 'police' | 'build';
+export type BustReason = BribeKind | 'launder' | 'pump';
 
 export type GameEventBody =
   | { type: 'gameStart' }
@@ -110,7 +141,7 @@ export type GameEventBody =
   | { type: 'pay'; player: PlayerId; amount: number; to: PlayerId | null }
   | { type: 'jail'; player: PlayerId }
   | { type: 'jailStay'; player: PlayerId; attempt: number }
-  | { type: 'jailOut'; player: PlayerId; how: 'bail' | 'card' | 'doubles' | 'forced' }
+  | { type: 'jailOut'; player: PlayerId; how: 'bail' | 'card' | 'doubles' | 'forced' | 'bribe' }
   | { type: 'threeDoubles'; player: PlayerId }
   | { type: 'auctionStart'; tile: TileId }
   | { type: 'bid'; player: PlayerId; amount: number }
@@ -128,6 +159,20 @@ export type GameEventBody =
   | { type: 'debtPaid'; player: PlayerId; amount: number; creditor: PlayerId | null }
   | { type: 'bankrupt'; player: PlayerId; creditor: PlayerId | null }
   | { type: 'gameOver'; winner: PlayerId }
+  | { type: 'blackRent'; owner: PlayerId; tile: TileId; amount: number }
+  | { type: 'launder'; player: PlayerId; tile: TileId; amount: number; net: number }
+  | { type: 'bribe'; player: PlayerId; kind: BribeKind; cost: number }
+  | { type: 'busted'; player: PlayerId; reason: BustReason; fine: number; seized: number }
+  | {
+      type: 'shares';
+      player: PlayerId;
+      group: GroupId;
+      count: number;
+      price: number;
+      buy: boolean;
+    }
+  | { type: 'pump'; player: PlayerId; group: GroupId; price: number }
+  | { type: 'dump'; player: PlayerId; group: GroupId; price: number }
   | { type: 'controller'; player: PlayerId; previous: string; bot: boolean };
 
 export type GameEvent = GameEventBody & { seq: number };
@@ -165,6 +210,12 @@ export interface GameState {
   events: GameEvent[];
   eventSeq: number;
   stats: GameStats;
+  /** Burza. `null` v sadě bez byznysové vrstvy. */
+  market: Market | null;
+  /** Podniky, přes které už se v tomto tahu pralo. */
+  launderedTiles: TileId[];
+  /** Daň čekající na rozhodnutí hráče, jestli uplatí úředníka. */
+  pendingTax: { tile: TileId; amount: number } | null;
 }
 
 export type Action =
@@ -185,6 +236,15 @@ export type Action =
   | { type: 'settleDebt'; player: PlayerId }
   | { type: 'declareBankruptcy'; player: PlayerId }
   | { type: 'endTurn'; player: PlayerId }
+  | { type: 'setOffBooks'; player: PlayerId; tile: TileId; on: boolean }
+  | { type: 'launder'; player: PlayerId; tile: TileId; amount: number }
+  | { type: 'payTax'; player: PlayerId }
+  | { type: 'bribeOfficial'; player: PlayerId }
+  | { type: 'bribePolice'; player: PlayerId }
+  | { type: 'bribeBuild'; player: PlayerId; tile: TileId }
+  | { type: 'buyShares'; player: PlayerId; group: GroupId; count: number }
+  | { type: 'sellShares'; player: PlayerId; group: GroupId; count: number }
+  | { type: 'pumpDump'; player: PlayerId; group: GroupId }
   /** Místo u stolu přebírá člověk nebo bot. Posílá jen hostitel, nikdy hráč po síti. */
   | { type: 'setController'; player: PlayerId; name: string; bot: BotConfig | null };
 
@@ -199,6 +259,55 @@ export type CardEffect =
   | { kind: 'toJail' }
   | { kind: 'jailCard' }
   | { kind: 'repairs'; perHouse: number; perHotel: number };
+
+export interface BribeRules {
+  cost: number;
+  riskPct: number;
+  fine: number;
+}
+
+export interface ArchetypePerks {
+  /** Sleva na domy a hotely. */
+  buildDiscountPct: number;
+  /** Bonus z čistého zisku při prodeji akcií. */
+  profitBonusPct: number;
+  /** O kolik procent silněji se hýbe cena při vlastním pump & dumpu. */
+  pumpSwingPct: number;
+  bribeDiscountPct: number;
+  /** Změna šance na odhalení úplatku v procentních bodech. */
+  bribeRiskDelta: number;
+  launderFeePct: number;
+  launderRiskDelta: number;
+}
+
+/** Čísla byznysové vrstvy. Výklad je v `docs/GDD.md`, kapitoly 6 a 7. */
+export interface BusinessRules {
+  blackRentBonusPct: number;
+  /** Za kolik procent se černé počítají do čistého jmění. */
+  dirtyWorthPct: number;
+  /** Kolik procent černých zabaví policie při každém odhalení. */
+  seizeDirtyPct: number;
+  launderCap: number;
+  launderFinePct: number;
+  launderRiskPct: number;
+  taxDiscountPct: number;
+  official: BribeRules;
+  police: BribeRules;
+  build: BribeRules;
+  pump: BribeRules & { upPct: number; downPct: number; turns: number };
+  stock: {
+    startPrice: number;
+    minPrice: number;
+    priceUnit: number;
+    maxShares: number;
+    buildPct: number;
+    bankruptPct: number;
+    noisePct: number;
+  };
+  /** Poplatek bez archetypu je v `launderFeePct`, archetypy ho mohou přebít. */
+  launderFeePct: number;
+  perks: Record<Archetype, Partial<ArchetypePerks>>;
+}
 
 /** Čísla a data jedné sady pravidel. Částky jsou v celých korunách. */
 export interface Ruleset {
@@ -215,4 +324,6 @@ export interface Ruleset {
   utilityRateBoth: number;
   totalHouses: number;
   totalHotels: number;
+  /** Bez této části hraje sada jen klasická pravidla. */
+  business?: BusinessRules;
 }

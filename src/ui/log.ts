@@ -56,6 +56,7 @@ export function formatEvent(s: GameState, e: GameEvent): string {
       if (e.how === 'bail') return l.jailOutBail(name(s, e.player));
       if (e.how === 'card') return l.jailOutCard(name(s, e.player));
       if (e.how === 'doubles') return l.jailOutDoubles(name(s, e.player));
+      if (e.how === 'bribe') return l.jailOutBribe(name(s, e.player));
       return l.jailOutForced(name(s, e.player));
     case 'threeDoubles':
       return l.threeDoubles(name(s, e.player));
@@ -91,6 +92,22 @@ export function formatEvent(s: GameState, e: GameEvent): string {
       return l.bankrupt(name(s, e.player));
     case 'gameOver':
       return l.gameOver(name(s, e.winner));
+    case 'blackRent':
+      return l.blackRent(name(s, e.owner), tile(e.tile), formatMoney(e.amount));
+    case 'launder':
+      return l.launder(name(s, e.player), tile(e.tile), formatMoney(e.amount), formatMoney(e.net));
+    case 'bribe':
+      return l.bribe[e.kind](name(s, e.player), formatMoney(e.cost));
+    case 'busted':
+      return `${l.busted[e.reason]} ${l.bustedPenalty(name(s, e.player), formatMoney(e.fine), formatMoney(e.seized))}`;
+    case 'shares': {
+      const say = e.buy ? l.sharesBuy : l.sharesSell;
+      return say(name(s, e.player), e.count, cs.groups[e.group], formatMoney(e.price));
+    }
+    case 'pump':
+      return l.pump(name(s, e.player), cs.groups[e.group], formatMoney(e.price));
+    case 'dump':
+      return l.dump(cs.groups[e.group], formatMoney(e.price));
   }
 }
 

@@ -1,5 +1,5 @@
 import { NEXTLEVEL } from './sets/nextlevel';
-import type { GroupId, Ruleset, Tile, TileId } from './types';
+import type { BusinessRules, GroupId, Ruleset, Tile, TileId } from './types';
 
 export const BOARD_SIZE = 40;
 export const JAIL_TILE: TileId = 10;
@@ -23,6 +23,7 @@ export let UTILITY_RATE_ONE = NEXTLEVEL.utilityRateOne;
 export let UTILITY_RATE_BOTH = NEXTLEVEL.utilityRateBoth;
 export let TOTAL_HOUSES = NEXTLEVEL.totalHouses;
 export let TOTAL_HOTELS = NEXTLEVEL.totalHotels;
+export let BUSINESS: BusinessRules | null = NEXTLEVEL.business ?? null;
 
 export function installBoard(set: Ruleset): void {
   BOARD = set.board;
@@ -36,6 +37,7 @@ export function installBoard(set: Ruleset): void {
   UTILITY_RATE_BOTH = set.utilityRateBoth;
   TOTAL_HOUSES = set.totalHouses;
   TOTAL_HOTELS = set.totalHotels;
+  BUSINESS = set.business ?? null;
 }
 
 export const GROUP_ORDER: readonly GroupId[] = [

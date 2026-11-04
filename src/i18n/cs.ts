@@ -1,4 +1,13 @@
-import type { DeckId, Difficulty, GameMode, GroupId, Personality } from '../core';
+import type {
+  Archetype,
+  BribeKind,
+  BustReason,
+  DeckId,
+  Difficulty,
+  GameMode,
+  GroupId,
+  Personality,
+} from '../core';
 
 export function formatMoney(amount: number): string {
   return `${amount.toLocaleString('cs-CZ').replace(/\s/g, '\u00a0')}\u00a0Kč`;
@@ -71,7 +80,9 @@ export const cs = {
     modeClassic: 'Klasika',
     modeNextLevel: 'Next level',
     modeHintClassic: 'Původní pravidla, ceny, nájmy i karty. Jen pro výuku.',
-    modeHintNextLevel: 'Naše české město, satirické karty a později byznysová vrstva.',
+    modeHintNextLevel: 'Naše české město, satirické karty, černé peníze, úplatky a burza.',
+    archetype: 'Tvůj archetyp',
+    archetypeRandom: 'Náhodný',
     win: 'Podmínka výhry',
     winLast: 'Poslední nezbankrotovaný',
     winRounds: 'Nejbohatší po počtu kol',
@@ -93,6 +104,55 @@ export const cs = {
     kriminalnik: 'Kriminálník',
     vyvazeny: 'Vyvážený',
   } satisfies Record<Personality, string>,
+  archetypes: {
+    developer: { name: 'Developer', perk: 'Domy a hotely o 15 % levněji.' },
+    kryptobro: {
+      name: 'Kryptobro',
+      perk: 'Prodej akcií: 20 % navíc ze zisku. Vlastní pump & dump má o polovinu větší výkyv.',
+    },
+    baron: { name: 'Dotační baron', perk: 'Úplatky o 30 % levněji a o 5 bodů menší riziko.' },
+    trafikant: { name: 'Trafikant', perk: 'Praní za 15 % místo 25 % a o 5 bodů menší riziko.' },
+  } satisfies Record<Archetype, { name: string; perk: string }>,
+  biz: {
+    open: 'Černý byznys',
+    title: 'Černý byznys',
+    close: 'Zavřít',
+    white: 'Bílé',
+    dirty: 'Černé',
+    dirtyShort: (amount: string) => `černé ${amount}`,
+    intro:
+      'Černé peníze jdou jen na úplatky, pump & dump a nájem na ruku. Na stavbu, daně a koupi od banky je musíš vyprat. Při každém odhalení policie zabaví půlku černých.',
+    launderTitle: 'Podniky a praní',
+    launderHint: (cap: string, fee: number, risk: number) =>
+      `Každý podnik vypere jednou za tah nejvýš ${cap}. Poplatek ${fee} %, riziko odhalení ${risk} %.`,
+    noTiles: 'Zatím nemáš žádný podnik.',
+    offBooksOn: 'Na ruku: ano',
+    offBooksOff: 'Na ruku: ne',
+    offBooksHint: 'Nájem na ruku je o 50 % vyšší, ale přijde v černých.',
+    launder: (amount: string, net: string) => `Vyprat ${amount} (dostaneš ${net})`,
+    laundered: 'Vypráno',
+    mortgaged: 'Zastaveno',
+    marketTitle: 'Burza',
+    marketHint: (max: number, cost: string, risk: number) =>
+      `Limit ${max} akcií na firmu. Pump & dump stojí ${cost} černých: cena vyletí, po dvou tvých tazích spadne a s rizikem ${risk} % na to přijde policie.`,
+    colFirm: 'Firma',
+    colPrice: 'Cena',
+    colHolding: 'Máš',
+    buy: (count: number) => `Koupit ${count}`,
+    sellAll: 'Prodat vše',
+    pump: 'Pump',
+    pumping: 'pumpa běží',
+    taxTitle: 'Daň',
+    taxText: (tile: string, amount: string) => `${tile}: máš zaplatit ${amount}.`,
+    payTax: (amount: string) => `Zaplatit ${amount}`,
+    bribeOfficial: (cost: string, risk: number) =>
+      `Uplatit úředníka za ${cost}: půlka daně, riziko ${risk} %`,
+    bribePolice: (cost: string, risk: number) => `Uplatit policajta za ${cost}, riziko ${risk} %`,
+    bribeBuild: (cost: string, risk: number) =>
+      `Stavět mimo pořadí: úplatek ${cost}, riziko ${risk} %`,
+    offBooksDeed: 'Nájem na ruku',
+    yes: 'ano',
+  },
   botNames: {
     zralok: 'Žralok Standa',
     lakomec: 'Lakomec Mirek',
@@ -344,6 +404,32 @@ export const cs = {
       `${name} splatil dluh ${amount} (${creditor}).`,
     bankrupt: (name: string) => `${name} ZBANKROTOVAL!`,
     gameOver: (name: string) => `Konec hry. Vítěz: ${name}!`,
+    jailOutBribe: (name: string) => `${name} se domluvil s policajtem a je venku.`,
+    blackRent: (name: string, tile: string, amount: string) =>
+      `${name} shrábl na ruku ${amount} černých (${tile}).`,
+    launder: (name: string, tile: string, amount: string, net: string) =>
+      `${name} vypral přes ${tile} ${amount}, čistého zbylo ${net}.`,
+    bribe: {
+      official: (name: string, cost: string) => `${name} podstrčil úředníkovi ${cost}.`,
+      police: (name: string, cost: string) => `${name} podstrčil policajtovi ${cost}.`,
+      build: (name: string, cost: string) => `${name} podstrčil stavebnímu úřadu ${cost}.`,
+    } satisfies Record<BribeKind, (name: string, cost: string) => string>,
+    busted: {
+      official: 'Úředník byl nasazený.',
+      police: 'Policajt to práskl.',
+      build: 'Černá stavba jde k zemi.',
+      launder: 'Finančák přišel na praní.',
+      pump: 'Policie rozkryla pump & dump.',
+    } satisfies Record<BustReason, string>,
+    bustedPenalty: (name: string, fine: string, seized: string) =>
+      `${name} platí pokutu ${fine}, zabaveno ${seized} černých.`,
+    sharesBuy: (name: string, count: number, firm: string, price: string) =>
+      `${name} kupuje ${count} akcií firmy ${firm} po ${price}.`,
+    sharesSell: (name: string, count: number, firm: string, price: string) =>
+      `${name} prodává ${count} akcií firmy ${firm} po ${price}.`,
+    pump: (name: string, firm: string, price: string) =>
+      `${name} roztáčí firmu ${firm}, akcie letí na ${price}. Podezřelé.`,
+    dump: (firm: string, price: string) => `Bublina praskla: ${firm} padá na ${price}.`,
     quip: (name: string, text: string) => `${name}: „${text}“`,
   },
   quips: {

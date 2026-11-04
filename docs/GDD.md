@@ -8,14 +8,14 @@ Hra je plně hratelná v jednom hráči. Každou roli standardně hraje bot a sp
 
 ## 1. Režimy a nastavení partie
 
-| Nastavení                   | Možnosti                                                                      |
-| --------------------------- | ----------------------------------------------------------------------------- |
+| Nastavení                   | Možnosti                                                                                             |
+| --------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Režim                       | Klasika (věrná kopie originální hry), Next level (naše česká satira, od Fáze 4 s byznysovou vrstvou) |
-| Výhra                       | Poslední nezbankrotovaný; nejbohatší po X kolech; první na Y Kč čistého jmění |
-| Boti                        | 1–3, obtížnost Lehká / Normální / Těžká                                       |
-| Osobnosti botů              | Žralok, Lakomec, Kriminálník, Vyvážený (přidělují se náhodně)                 |
-| Počáteční hotovost          | 1 000 000, 1 500 000 (výchozí), 2 000 000 Kč                                  |
-| Místa u stolu (multiplayer) | 2–4, volná místa obsadí boti                                                  |
+| Výhra                       | Poslední nezbankrotovaný; nejbohatší po X kolech; první na Y Kč čistého jmění                        |
+| Boti                        | 1–3, obtížnost Lehká / Normální / Těžká                                                              |
+| Osobnosti botů              | Žralok, Lakomec, Kriminálník, Vyvážený (přidělují se náhodně)                                        |
+| Počáteční hotovost          | 1 000 000, 1 500 000 (výchozí), 2 000 000 Kč                                                         |
+| Místa u stolu (multiplayer) | 2–4, volná místa obsadí boti                                                                         |
 
 ### Multiplayer
 
@@ -26,7 +26,7 @@ Hra je plně hratelná v jednom hráči. Každou roli standardně hraje bot a sp
 - Odchod hostitele partii ukončí, hostitel se nepřenáší na jiného hráče.
 - Rychlost hry je jen v sólu.
 
-Čisté jmění = hotovost + cena pozemků (zastavený pozemek jen zástavní hodnota) + pořizovací cena budov.
+Čisté jmění = hotovost + cena pozemků (zastavený pozemek jen zástavní hodnota) + pořizovací cena budov. V režimu Next level navíc akcie za tržní cenu a 75 % černých.
 
 ### Dva režimy
 
@@ -140,32 +140,48 @@ Dva balíčky po 16 kartách. Texty jsou v `src/i18n/cs.ts`, efekty v `src/core/
 
 Obtížnost ovlivňuje ocenění celých měst, ochotu nabízet obchody a opatrnost při dávání soupeři celého města. Bot se rozhoduje jen z veřejného stavu a jeho rozhodnutí jsou deterministická vzhledem ke stavu. S přibývajícími koly boti snižují přirážku za prodej pozemku soupeři, aby se partie nezasekla.
 
-## 6. Archetypy (Fáze 4)
+## 6. Archetypy
 
-| Archetyp      | Pasivní schopnost (návrh)                                           |
-| ------------- | ------------------------------------------------------------------- |
-| Developer     | Domy a hotely o 15 % levněji                                        |
-| Kryptobro     | +20 % zisk z prodeje akcií, ale ceny jeho akcií kolísají o 50 % víc |
-| Dotační baron | Úplatky o 30 % levněji, šance na odhalení úplatku −5 bodů           |
-| Trafikant     | Poplatek za praní 15 % místo 25 %, šance na odhalení praní −5 bodů  |
+Každý hráč má jeden archetyp, u stolu se neopakují. Sólista a hostitel si ho vybírají v lobby (nebo náhodně), ostatní ho dostanou podle seedu. Platí jen v režimu Next level.
 
-## 7. Režim MONOPOLIS (Fáze 4, návrh)
+| Archetyp      | Pasivní schopnost                                                               |
+| ------------- | ------------------------------------------------------------------------------- |
+| Developer     | Domy a hotely o 15 % levněji                                                    |
+| Kryptobro     | +20 % ze zisku při prodeji akcií, vlastní pump & dump má o polovinu větší výkyv |
+| Dotační baron | Úplatky o 30 % levněji, šance na odhalení úplatku −5 bodů                       |
+| Trafikant     | Poplatek za praní 15 % místo 25 %, šance na odhalení praní −5 bodů              |
 
-Žádný heat meter. Každá nelegální akce má procentuální šanci na odhalení a následuje pokuta a vězení.
+## 7. Byznysová vrstva (režim Next level)
 
-| Akce                     | Výnos nebo efekt                                   | Cena              | Šance na odhalení | Trest                                       |
-| ------------------------ | -------------------------------------------------- | ----------------- | ----------------- | ------------------------------------------- |
-| Praní peněz              | Černé na bílé, nejvýše 100 000 Kč za tah za podnik | Poplatek 25 %     | 10 %              | Pokuta 50 % prané částky, vězení            |
-| Úplatek úředníkovi       | Daň z pole −50 %                                   | 20 000 Kč         | 15 %              | Pokuta 100 000 Kč, vězení                   |
-| Úplatek policajtovi      | Okamžitý odchod z vězení                           | 40 000 Kč         | 20 %              | Pokuta 100 000 Kč, další kolo ve vězení     |
-| Úplatek stavebnímu úřadu | Stavba bez rovnoměrnosti                           | 50 000 Kč         | 20 %              | Pokuta 150 000 Kč, vězení, stavba se zbourá |
-| Pump & dump              | Cena akcie +30 % na 2 kola, pak −40 %              | 50 000 Kč černých | 25 %              | Zabavení zisku, pokuta 200 000 Kč, vězení   |
-| Heist na hotel           | 200 000–500 000 Kč černých                         | Minihra           | 30 % při prohře   | Pokuta 300 000 Kč, vězení                   |
-| Heist na banku           | 500 000–1 000 000 Kč černých                       | Minihra           | 45 % při prohře   | Pokuta 500 000 Kč, vězení                   |
+Žádný heat meter. Každá nelegální akce má procentuální šanci na odhalení a následuje pokuta a vazba. Čísla jsou v `src/core/sets/nextlevel.ts`, pravidla v `src/core/reducer.ts` a `src/core/business.ts`. Klasika tuhle vrstvu nemá.
 
-Černé peníze nejdou použít na stavbu, daně, hypotéky ani koupi od banky. Nájem a úplatky jimi zaplatit lze.
+### Černé peníze
 
-Burza: každé město je firma, počáteční cena akcie 10 000 Kč. Stavba v městě +2 %, bankrot vlastníka −15 %, karty a pump & dump podle efektu, náhodný šum ±3 % za kolo.
+Hráč má bílé (hotovost) a černé. Černé jdou jen na úplatky, pump & dump a nájem na ruku. Nejdou na stavbu, daně, hypotéky, dluhy ani koupi od banky. Do čistého jmění se počítají za 75 %.
+
+Zdrojem je **nájem na ruku**: majitel si ho zapne u každého pozemku zvlášť. Nájemník platí stejnou částku, nejdřív svými černými, zbytek bílými. Majitel dostane všechno v černých a banka k tomu přidá 50 %. Na co nájemník nemá, to dluží v bílých. Obchod a bankrot nájem na ruku u pozemku vypnou.
+
+Proč to dává smysl: 100 Kč nájmu je 150 Kč černých, po praní 112,50 Kč bílých. Vyplatí se to, ale peníze nejsou hned k dispozici, pere se po malých částkách a s rizikem. Když je odhalen, přijde hráč o polovinu černých, takže se je nevyplatí hromadit. Od Fáze 7 přibudou heisty jako druhý zdroj.
+
+### Nelegální akce
+
+Nelegální akce jdou jen na svobodě, bez dluhu a mimo rozhodování o koupi nebo dani. Výjimkou jsou úplatky úředníkovi (při dani) a policajtovi (ve vazbě). Úplatek se platí nejdřív černými, zbytek bílými. Každé odhalení zabaví 50 % zbylých černých.
+
+| Akce                     | Výnos nebo efekt                                     | Cena               | Šance na odhalení | Trest                                            |
+| ------------------------ | ---------------------------------------------------- | ------------------ | ----------------- | ------------------------------------------------ |
+| Praní peněz              | Černé na bílé, nejvýše 100 000 Kč za tah přes podnik | Poplatek 25 %      | 10 %              | Praná částka propadá, pokuta 50 %, vazba         |
+| Úplatek úředníkovi       | Daň z pole −50 %                                     | 20 000 Kč          | 15 %              | Celá daň, pokuta 100 000 Kč, vazba               |
+| Úplatek policajtovi      | Okamžitý odchod z vazby, hráč hned hází              | 40 000 Kč          | 20 %              | Pokuta 100 000 Kč, tento tah se nehází           |
+| Úplatek stavebnímu úřadu | Stavba bez rovnoměrnosti                             | 50 000 Kč + stavba | 20 %              | Stavba se zbourá, pokuta 150 000 Kč, vazba       |
+| Pump & dump              | Cena akcie +30 %, po 2 tazích viníka −40 %           | 50 000 Kč černých  | 25 % při pádu     | Zisk z prodejů propadá, pokuta 200 000 Kč, vazba |
+| Heist na hotel (Fáze 7)  | 200 000–500 000 Kč černých                           | Minihra            | 30 % při prohře   | Pokuta 300 000 Kč, vazba                         |
+| Heist na banku (Fáze 7)  | 500 000–1 000 000 Kč černých                         | Minihra            | 45 % při prohře   | Pokuta 500 000 Kč, vazba                         |
+
+Podnikem je každý vlastní nezastavený pozemek a každý vypere jednou za tah. Pokuta, na kterou hráč nemá, se stává běžným dluhem.
+
+### Burza
+
+Každé město je firma, počáteční cena akcie 10 000 Kč, nejvýše 50 akcií jedné firmy na hráče. Akcie se kupují jen za bílé a prodávat je jde i při dluhu. Stavba ve městě +2 %, bankrot vlastníka pozemků ve městě −15 %, náhodný šum ±3 % na konci každého kola, pump & dump podle tabulky. Jedna firma může být jen v jednom pump & dumpu a hráč smí mít jen jeden. Při bankrotu se akcie prodají za tržní cenu. Akcie se počítají do čistého jmění i do toho, co jde prodat na dluh.
 
 ## 8. Minihry (Fáze 5–7)
 

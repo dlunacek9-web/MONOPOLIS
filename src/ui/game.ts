@@ -1,4 +1,5 @@
 import {
+  BUSINESS,
   GROUP_ORDER,
   HOTEL_LEVEL,
   JAIL_BAIL,
@@ -6,25 +7,44 @@ import {
   MONEY_UNIT,
   STATION_RENTS,
   actorOf,
+  bribeCost,
+  bribeRiskPct,
+  buildCost,
+  canBribeBuild,
+  canBribeOfficial,
+  canBribePolice,
   canBuild,
+  canBuyShares,
+  canLaunder,
   canMortgage,
   canProposeTrade,
+  canPumpDump,
   canSellBuilding,
+  canSellShares,
+  canSetOffBooks,
   canUnmortgage,
   hasBuildingsInGroup,
+  hasBusiness,
+  holdingOf,
   isValidTrade,
+  launderFeePct,
+  launderLimit,
+  launderNet,
+  launderRiskPct,
   minBid,
   mortgageValue,
   netWorth,
   ownablePrice,
   ownsWholeGroup,
+  pumpOn,
+  sharePrice,
   groupTiles,
   tilesOfKind,
   tileAt,
   tilesOwnedBy,
   unmortgageCost,
 } from '../core';
-import type { Action, GameEvent, GameState, PlayerId, TileId, TradeSide } from '../core';
+import type { Action, GameEvent, GameState, GroupId, PlayerId, TileId, TradeSide } from '../core';
 import { cs, formatMoney } from '../i18n/cs';
 import { BotRunner } from '../bots/runner';
 import type { GameTransport } from '../net/transport';
@@ -63,6 +83,7 @@ export class GameScreen {
   private readonly unsubscribe: () => void;
   private selectedTile: TileId | null = null;
   private draft: TradeDraft | null = null;
+  private businessOpen = false;
   private speed: Speed = 'normal';
   private endPublished = false;
   private readonly lines: { text: string; cls: string; color: string }[] = [];
@@ -196,7 +217,7 @@ export class GameScreen {
         continue;
       }
       if (event.type !== 'passStart') flushRoll();
-      const important = ['bankrupt', 'gameOver', 'turnStart'].includes(event.type);
+      const important = ['bankrupt', 'busted', 'gameOver', 'turnStart'].includes(event.type);
       const player = 'player' in event ? event.player : 'from' in event ? event.from : null;
       this.addLine(formatEvent(s, event), important ? `log-${event.type}` : '', player);
       const quip = quipFor(s, event);
@@ -214,6 +235,7 @@ export class GameScreen {
       publishGameEnd(summarizeGame(s));
     }
     this.view?.update(s, this.me, this.selectedTile);
+    if (actorOf(s) !== this.me) this.businessOpen = false;
     const focus = this.ui.querySelector<HTMLElement>('.log')?.scrollTop ?? 0;
     const stage = this.view
       ? `<div class="hud">${this.renderCenter(s)}</div>`
@@ -228,6 +250,7 @@ export class GameScreen {
         </aside>
       </div>
       ${this.draft ? this.renderTradeDialog(s, this.draft) : ''}
+      ${this.businessOpen ? this.renderBusinessDialog(s) : ''}
       ${s.phase === 'gameOver' ? this.renderResult(s) : ''}`;
     const log = this.ui.querySelector<HTMLElement>('.log');
     if (log) log.scrollTop = focus;
@@ -339,6 +362,8 @@ export class GameScreen {
           p.inJail ? cs.game.inJail : '',
           p.bankrupt ? cs.game.isBankrupt : '',
           p.jailCards.length ? cs.game.jailCardsCount(p.jailCards.length) : '',
+          p.archetype ? cs.archetypes[p.archetype].name : '',
+          p.dirty ? cs.biz.dirtyShort(formatMoney(p.dirty)) : '',
         ]
           .filter(Boolean)
           .join(' · ');
@@ -378,6 +403,7 @@ export class GameScreen {
         <h3>${cs.game.debtTitle}</h3>
         <p>${cs.game.debtText(formatMoney(debt.amount), escapeHtml(creditor))}</p>
         ${button(cs.game.pay(formatMoney(debt.amount)), 'settleDebt', me.cash < debt.amount ? 'disabled' : '', true)}
+        ${this.businessButton(s)}
         ${this.tradeButton(s)}
         ${button(cs.game.bankrupt, 'declareBankruptcy', 'data-danger')}`;
     }
@@ -391,16 +417,146 @@ export class GameScreen {
         ${button(cs.game.decline, 'decline', '', !affordable)}
         ${this.tradeButton(s)}`;
     }
+    if (s.phase === 'awaitTax' && s.pendingTax) return this.renderTax(s, s.pendingTax);
     if (s.phase === 'awaitRoll') {
       const jail = me.inJail
         ? `${button(cs.game.payBail(formatMoney(JAIL_BAIL)), 'payBail', me.cash < JAIL_BAIL ? 'disabled' : '')}
-           ${me.jailCards.length ? button(cs.game.useJailCard, 'useJailCard') : ''}`
+           ${me.jailCards.length ? button(cs.game.useJailCard, 'useJailCard') : ''}
+           ${this.policeBribeButton(s)}`
         : '';
       const label = me.inJail ? cs.game.rollInJail : cs.game.roll;
-      return `${button(label, 'roll', '', true)}${jail}${this.tradeButton(s)}`;
+      return `${button(label, 'roll', '', true)}${jail}${this.businessButton(s)}${this.tradeButton(s)}`;
     }
     const label = s.extraRoll && !me.inJail ? cs.game.rollAgain : cs.game.endTurn;
-    return `${button(label, 'endTurn', '', true)}${this.tradeButton(s)}`;
+    return `${button(label, 'endTurn', '', true)}${this.businessButton(s)}${this.tradeButton(s)}`;
+  }
+
+  private businessButton(s: GameState): string {
+    return hasBusiness(s) ? button(cs.biz.open, 'openBusiness') : '';
+  }
+
+  private policeBribeButton(s: GameState): string {
+    if (!BUSINESS || !canBribePolice(s, this.me)) return '';
+    const rules = BUSINESS.police;
+    const label = cs.biz.bribePolice(
+      formatMoney(bribeCost(s, this.me, rules)),
+      bribeRiskPct(s, this.me, rules),
+    );
+    return button(label, 'bribePolice');
+  }
+
+  private renderTax(s: GameState, tax: NonNullable<GameState['pendingTax']>): string {
+    const amount = formatMoney(tax.amount);
+    const bribe =
+      BUSINESS && canBribeOfficial(s, this.me)
+        ? button(
+            cs.biz.bribeOfficial(
+              formatMoney(bribeCost(s, this.me, BUSINESS.official)),
+              bribeRiskPct(s, this.me, BUSINESS.official),
+            ),
+            'bribeOfficial',
+          )
+        : '';
+    return `
+      <h3>${cs.biz.taxTitle}</h3>
+      <p>${cs.biz.taxText(cs.tiles[tax.tile] ?? '', amount)}</p>
+      ${button(cs.biz.payTax(amount), 'payTax', '', true)}
+      ${bribe}`;
+  }
+
+  private renderBusinessDialog(s: GameState): string {
+    if (!BUSINESS) return '';
+    const me = s.players[this.me]!;
+    return `
+      <div class="overlay">
+        <div class="dialog business">
+          <h2>${cs.biz.title}</h2>
+          <p class="biz-balance">
+            <span>${cs.biz.white}: <strong>${formatMoney(me.cash)}</strong></span>
+            <span>${cs.biz.dirty}: <strong>${formatMoney(me.dirty)}</strong></span>
+            ${me.archetype ? `<span>${cs.archetypes[me.archetype].name}: ${cs.archetypes[me.archetype].perk}</span>` : ''}
+          </p>
+          <p><small>${cs.biz.intro}</small></p>
+          ${this.renderLaunderSection(s)}
+          ${this.renderMarketSection(s)}
+          <div class="row">${button(cs.biz.close, 'closeBusiness', '', true)}</div>
+        </div>
+      </div>`;
+  }
+
+  private renderLaunderSection(s: GameState): string {
+    const amount = launderLimit(s, this.me);
+    const rows = tilesOwnedBy(s, this.me)
+      .map((tile) => {
+        const deed = s.deeds[tile]!;
+        const toggle = canSetOffBooks(s, this.me, tile)
+          ? button(
+              deed.offBooks ? cs.biz.offBooksOn : cs.biz.offBooksOff,
+              'setOffBooks',
+              `data-tile-id="${tile}" data-on="${deed.offBooks ? '' : '1'}"`,
+            )
+          : '';
+        const net = formatMoney(launderNet(s, this.me, amount));
+        const wash = deed.mortgaged
+          ? cs.biz.mortgaged
+          : s.launderedTiles.includes(tile)
+            ? cs.biz.laundered
+            : amount === 0
+              ? ''
+              : button(
+                  cs.biz.launder(formatMoney(amount), net),
+                  'launder',
+                  `data-tile-id="${tile}" data-amount="${amount}" ${canLaunder(s, this.me, tile, amount) ? '' : 'disabled'}`,
+                );
+        return `<tr><td>${cs.tiles[tile]}</td><td>${toggle}</td><td>${wash}</td></tr>`;
+      })
+      .join('');
+    const hint = cs.biz.launderHint(
+      formatMoney(BUSINESS!.launderCap),
+      launderFeePct(s, this.me),
+      launderRiskPct(s, this.me),
+    );
+    return `
+      <h3>${cs.biz.launderTitle}</h3>
+      <p><small>${hint} ${cs.biz.offBooksHint}</small></p>
+      ${rows ? `<div class="biz-scroll"><table class="biz-table">${rows}</table></div>` : `<p>${cs.biz.noTiles}</p>`}`;
+  }
+
+  private renderMarketSection(s: GameState): string {
+    const { pump, stock } = BUSINESS!;
+    const rows = GROUP_ORDER.map((group) => this.renderMarketRow(s, group)).join('');
+    return `
+      <h3>${cs.biz.marketTitle}</h3>
+      <p><small>${cs.biz.marketHint(stock.maxShares, formatMoney(pump.cost), pump.riskPct)}</small></p>
+      <table class="biz-table">
+        <tr><th>${cs.biz.colFirm}</th><th>${cs.biz.colPrice}</th><th>${cs.biz.colHolding}</th><th></th></tr>
+        ${rows}
+      </table>`;
+  }
+
+  private renderMarketRow(s: GameState, group: GroupId): string {
+    const lot = 5;
+    const { count } = holdingOf(s, this.me, group);
+    const data = `data-group="${group}"`;
+    const buttons = [
+      button(
+        cs.biz.buy(lot),
+        'buyShares',
+        `${data} data-count="${lot}" ${canBuyShares(s, this.me, group, lot) ? '' : 'disabled'}`,
+      ),
+      button(
+        cs.biz.sellAll,
+        'sellShares',
+        `${data} data-count="${count}" ${canSellShares(s, this.me, group, count) ? '' : 'disabled'}`,
+      ),
+      button(
+        cs.biz.pump,
+        'pumpDump',
+        `${data} ${canPumpDump(s, this.me, group) ? '' : 'disabled'}`,
+      ),
+    ].join('');
+    const pumping = pumpOn(s, group) ? ` <small>(${cs.biz.pumping})</small>` : '';
+    return `<tr><td>${cs.groups[group]}${pumping}</td><td>${formatMoney(sharePrice(s, group))}</td><td>${count}</td><td class="row">${buttons}</td></tr>`;
   }
 
   private tradeButton(s: GameState): string {
@@ -509,7 +665,10 @@ export class GameScreen {
           formatMoney(tile.rents[HOTEL_LEVEL]!),
           owned && level === HOTEL_LEVEL,
         );
-        row(cs.tile.houseCost, formatMoney(tile.houseCost));
+        row(
+          cs.tile.houseCost,
+          formatMoney(deed?.owner != null ? buildCost(s, deed.owner, id) : tile.houseCost),
+        );
         break;
       }
       case 'station': {
@@ -543,14 +702,27 @@ export class GameScreen {
       row(cs.tile.price, formatMoney(ownablePrice(id) ?? 0));
       row(cs.tile.mortgageValue, formatMoney(mortgageValue(id)));
       row(cs.tile.owner, deed.mortgaged ? `${owner} (${cs.tile.mortgaged})` : owner);
+      if (deed.offBooks) row(cs.biz.offBooksDeed, cs.biz.yes);
     }
     const manage: string[] = [];
     if (withControls && deed?.owner === this.me) {
       if (tile.kind === 'property') {
         if (canBuild(s, this.me, id)) {
           manage.push(
-            button(cs.tile.build(formatMoney(tile.houseCost)), 'build', `data-tile-id="${id}"`),
+            button(
+              cs.tile.build(formatMoney(buildCost(s, this.me, id))),
+              'build',
+              `data-tile-id="${id}"`,
+            ),
           );
+        }
+        if (BUSINESS && canBribeBuild(s, this.me, id)) {
+          const rules = BUSINESS.build;
+          const label = cs.biz.bribeBuild(
+            formatMoney(bribeCost(s, this.me, rules)),
+            bribeRiskPct(s, this.me, rules),
+          );
+          manage.push(button(label, 'bribeBuild', `data-tile-id="${id}"`));
         }
         if (canSellBuilding(s, this.me, id)) {
           const value = formatMoney(Math.floor(tile.houseCost / 2));
@@ -723,6 +895,9 @@ export class GameScreen {
       case 'rejectTrade':
       case 'settleDebt':
       case 'endTurn':
+      case 'payTax':
+      case 'bribeOfficial':
+      case 'bribePolice':
         this.send({ type: action, player });
         return;
       case 'declareBankruptcy':
@@ -735,8 +910,33 @@ export class GameScreen {
       case 'sellBuilding':
       case 'mortgage':
       case 'unmortgage':
+      case 'bribeBuild':
         this.send({ type: action, player, tile });
         return;
+      case 'setOffBooks':
+        this.send({ type: action, player, tile, on: el.dataset.on === '1' });
+        return;
+      case 'launder':
+        this.send({ type: action, player, tile, amount: Number(el.dataset.amount) });
+        return;
+      case 'buyShares':
+      case 'sellShares':
+        this.send({
+          type: action,
+          player,
+          group: el.dataset.group as GroupId,
+          count: Number(el.dataset.count),
+        });
+        return;
+      case 'pumpDump':
+        this.send({ type: action, player, group: el.dataset.group as GroupId });
+        return;
+      case 'openBusiness':
+        this.businessOpen = true;
+        break;
+      case 'closeBusiness':
+        this.businessOpen = false;
+        break;
       case 'closeTile':
         this.selectedTile = null;
         break;

@@ -21,12 +21,50 @@ function playOut(state: GameState, maxActions = 60_000): { state: GameState; act
   while (s.phase !== 'gameOver' && actions < maxActions) {
     s = reduce(s, chooseBotAction(s, actorOf(s)!));
     actions += 1;
-    const cashOk = s.players.every((p) => p.cash >= 0);
+    const cashOk = s.players.every((p) => p.cash >= 0 && p.dirty >= 0);
     if (!cashOk) throw new Error('Záporná hotovost');
     if (s.housesLeft < 0 || s.hotelsLeft < 0) throw new Error('Záporná zásoba budov');
   }
   return { state: s, actions };
 }
+
+describe('byznysová vrstva u botů', () => {
+  it('boti používají všechno, co vrstva nabízí, a partie dál končí', () => {
+    const seen = new Set<string>();
+    const rounds: number[] = [];
+    for (let seed = 1; seed <= 40; seed++) {
+      let s = createGame(
+        { mode: 'nextlevel', win: { type: 'lastStanding' } },
+        setups(4, seed, 'normal').map((setup, i) => ({
+          ...setup,
+          archetype: (['developer', 'kryptobro', 'baron', 'trafikant'] as const)[i],
+        })),
+        seed * 31,
+      );
+      for (let i = 0; i < 60_000 && s.phase !== 'gameOver'; i++) {
+        const action = chooseBotAction(s, actorOf(s)!);
+        seen.add(action.type);
+        s = reduce(s, action);
+      }
+      expect(s.phase, `seed ${seed}`).toBe('gameOver');
+      rounds.push(s.round);
+    }
+    for (const type of [
+      'setOffBooks',
+      'launder',
+      'payTax',
+      'bribeOfficial',
+      'bribePolice',
+      'buyShares',
+      'sellShares',
+      'pumpDump',
+    ]) {
+      expect(seen, type).toContain(type);
+    }
+    const average = rounds.reduce((a, b) => a + b, 0) / rounds.length;
+    expect(average).toBeLessThan(150);
+  });
+});
 
 describe('celé partie botů', () => {
   const lastStanding: WinCondition = { type: 'lastStanding' };

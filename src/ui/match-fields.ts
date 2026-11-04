@@ -1,5 +1,5 @@
 import { cs, formatMoney } from '../i18n/cs';
-import { DEFAULT_MATCH, MODE_MONEY, normalizeMatch } from '../net/match';
+import { ARCHETYPES, DEFAULT_MATCH, MODE_MONEY, normalizeMatch } from '../net/match';
 import type { MatchOptions } from '../net/match';
 import { escapeHtml } from './html';
 
@@ -32,6 +32,12 @@ export function renderMatchFields(options: MatchOptions): string {
       </select>
     </label>
     <p class="mode-hint" data-mode-hint>${prefs.mode === 'classic' ? cs.lobby.modeHintClassic : cs.lobby.modeHintNextLevel}</p>
+    <label data-archetype${prefs.mode === 'classic' ? ' hidden' : ''}>${cs.lobby.archetype}
+      <select name="archetype">
+        ${option('random', cs.lobby.archetypeRandom, prefs.archetype === 'random')}
+        ${ARCHETYPES.map((a) => option(a, `${cs.archetypes[a].name}: ${cs.archetypes[a].perk}`, prefs.archetype === a)).join('')}
+      </select>
+    </label>
     <label>${cs.lobby.startCash}
       <select name="startCash">
         ${startCashOptions(prefs)}
@@ -73,6 +79,7 @@ export function wireMatchFields(form: HTMLFormElement): void {
     money.min = String(defaults.startCash + defaults.step);
     money.step = String(defaults.step);
     money.value = String(defaults.money);
+    form.querySelector<HTMLElement>('[data-archetype]')!.hidden = mode === 'classic';
     form.querySelector('[data-mode-hint]')!.textContent =
       mode === 'classic' ? cs.lobby.modeHintClassic : cs.lobby.modeHintNextLevel;
   };
@@ -94,5 +101,6 @@ export function readMatchFields(form: HTMLFormElement, previous: MatchOptions): 
     rounds: Number(data.get('rounds') ?? previous.rounds),
     money: Number(data.get('money') ?? previous.money),
     startCash: Number(data.get('startCash')),
+    archetype: data.get('archetype') as MatchOptions['archetype'],
   });
 }

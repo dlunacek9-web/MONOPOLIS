@@ -1,5 +1,7 @@
 import {
   BOARD_SIZE,
+  BUSINESS,
+  GROUP_ORDER,
   HOTEL_LEVEL,
   JAIL_BAIL,
   JAIL_TILE,
@@ -14,11 +16,31 @@ import {
   tileAt,
   tilesOfKind,
 } from './board';
+import {
+  bribeCost,
+  bribeRiskPct,
+  canBribeBuild,
+  canBribeOfficial,
+  canBribePolice,
+  canBuyShares,
+  canLaunder,
+  canPumpDump,
+  canSellShares,
+  canSetOffBooks,
+  launderFine,
+  launderNet,
+  launderRiskPct,
+  pumpOn,
+  pumpSwing,
+  saleOf,
+  sharePrice,
+} from './business';
 import { CARDS, cardEffect } from './cards';
 import { useRuleset } from './ruleset';
 import { randomInt, rollDice, shuffle } from './rng';
 import {
   actorOf,
+  buildCost,
   canBuild,
   canMortgage,
   canProposeTrade,
@@ -37,13 +59,17 @@ import {
 } from './rules';
 import type {
   Action,
+  BustReason,
   DeckId,
   Deed,
   GameEventBody,
   GameSettings,
   GameState,
+  GroupId,
+  Market,
   PlayerId,
   PlayerSetup,
+  Pump,
   TileId,
   TradeSide,
 } from './types';
@@ -62,6 +88,13 @@ function emit(s: GameState, event: GameEventBody): void {
   if (s.events.length > MAX_LOG) s.events.shift();
 }
 
+function createMarket(): Market | null {
+  if (!BUSINESS) return null;
+  const start = BUSINESS.stock.startPrice;
+  const prices = Object.fromEntries(GROUP_ORDER.map((group) => [group, start]));
+  return { prices: prices as Market['prices'], pumps: [] };
+}
+
 export function createGame(
   settings: GameSettings,
   setups: readonly PlayerSetup[],
@@ -70,7 +103,7 @@ export function createGame(
   if (setups.length < 2 || setups.length > 4) throw new Error('Hra je pro 2–4 hráče');
   useRuleset(settings.mode);
   const deeds: (Deed | null)[] = BOARD.map((_, id) =>
-    ownablePrice(id) === null ? null : { owner: null, level: 0, mortgaged: false },
+    ownablePrice(id) === null ? null : { owner: null, level: 0, mortgaged: false, offBooks: false },
   );
   const s: GameState = {
     settings,
@@ -85,6 +118,9 @@ export function createGame(
       jailCards: [],
       doublesCount: 0,
       bankrupt: false,
+      dirty: 0,
+      shares: {},
+      archetype: BUSINESS ? (setup.archetype ?? null) : null,
     })),
     deeds,
     phase: 'awaitRoll',
@@ -108,6 +144,9 @@ export function createGame(
     events: [],
     eventSeq: 0,
     stats: { biggestRent: null },
+    market: createMarket(),
+    launderedTiles: [],
+    pendingTax: null,
   };
   s.decks.tip = shuffle(
     s,
@@ -161,6 +200,12 @@ function land(s: GameState, player: PlayerId, rule: RentRule = { kind: 'normal' 
       landOnOwnable(s, player, p.position, rule);
       break;
     case 'tax':
+      if (BUSINESS) {
+        // V byznysové vrstvě se hráč nejdřív rozhodne, jestli uplatí úředníka.
+        s.phase = 'awaitTax';
+        s.pendingTax = { tile: p.position, amount: tile.amount };
+        break;
+      }
       emit(s, { type: 'tax', player, tile: p.position, amount: tile.amount });
       charge(s, player, null, tile.amount);
       break;
@@ -203,7 +248,133 @@ function landOnOwnable(s: GameState, player: PlayerId, tile: TileId, rule: RentR
   if (!s.stats.biggestRent || amount > s.stats.biggestRent.amount) {
     s.stats.biggestRent = { player: deed.owner, amount };
   }
+  if (BUSINESS && deed.offBooks) {
+    collectBlackRent(s, player, deed.owner, tile, amount);
+    return;
+  }
   charge(s, player, deed.owner, amount);
+}
+
+/** Nájem na ruku: nájemník platí nejdřív černými, majitel dostane vše v černých i s přirážkou. */
+function collectBlackRent(
+  s: GameState,
+  player: PlayerId,
+  owner: PlayerId,
+  tile: TileId,
+  amount: number,
+): void {
+  const payer = playerOf(s, player);
+  const receiver = playerOf(s, owner);
+  const fromDirty = Math.min(payer.dirty, amount);
+  payer.dirty -= fromDirty;
+  receiver.dirty += fromDirty;
+  const rest = amount - fromDirty;
+  const inDebt = s.debts.some((debt) => debt.player === player);
+  if (!inDebt && payer.cash >= rest) {
+    payer.cash -= rest;
+    receiver.dirty += rest;
+  } else {
+    // Na co nemá, to dluží v bílých. Dluh se nedá vymáhat načerno.
+    charge(s, player, owner, rest);
+  }
+  const bonus = Math.floor((amount * BUSINESS!.blackRentBonusPct) / 100);
+  receiver.dirty += bonus;
+  emit(s, { type: 'blackRent', owner, tile, amount: amount + bonus });
+}
+
+function isCaught(s: GameState, riskPct: number): boolean {
+  return randomInt(s, 100) < riskPct;
+}
+
+/** Odhalení: propadne část černých a přijde pokuta. Vězení řeší volající, ne každý trest ho má. */
+function bust(s: GameState, player: PlayerId, reason: BustReason, fine: number): void {
+  const p = playerOf(s, player);
+  const seized = Math.floor((p.dirty * BUSINESS!.seizeDirtyPct) / 100);
+  p.dirty -= seized;
+  emit(s, { type: 'busted', player, reason, fine, seized });
+  charge(s, player, null, fine);
+}
+
+/** Úplatek se platí nejdřív černými, zbytek bílými. Dostupnost hlídají `canBribe…`. */
+function payBribe(s: GameState, player: PlayerId, cost: number): void {
+  const p = playerOf(s, player);
+  const fromDirty = Math.min(p.dirty, cost);
+  p.dirty -= fromDirty;
+  p.cash -= cost - fromDirty;
+}
+
+function settleTax(s: GameState, player: PlayerId, amount: number): void {
+  const tile = s.pendingTax!.tile;
+  s.pendingTax = null;
+  s.phase = 'awaitEnd';
+  emit(s, { type: 'tax', player, tile, amount });
+  charge(s, player, null, amount);
+}
+
+function movePrice(s: GameState, group: GroupId, pct: number): void {
+  if (!s.market || !BUSINESS) return;
+  const { minPrice, priceUnit } = BUSINESS.stock;
+  const raw = (s.market.prices[group] * (100 + pct)) / 100;
+  s.market.prices[group] = Math.max(minPrice, Math.round(raw / priceUnit) * priceUnit);
+}
+
+function dump(s: GameState, pump: Pump): void {
+  movePrice(s, pump.group, -pumpSwing(s, pump.by).down);
+  s.market!.pumps = s.market!.pumps.filter((other) => other !== pump);
+  emit(s, {
+    type: 'dump',
+    player: pump.by,
+    group: pump.group,
+    price: sharePrice(s, pump.group),
+  });
+}
+
+/** Na začátku tahu viníka doběhne jeho pumpa. Až teď se pozná, jestli na to někdo přišel. */
+function tickPump(s: GameState, player: PlayerId): void {
+  const pump = s.market?.pumps.find((candidate) => candidate.by === player);
+  if (!pump) return;
+  pump.turnsLeft -= 1;
+  if (pump.turnsLeft > 0) return;
+  dump(s, pump);
+  const rules = BUSINESS!.pump;
+  if (isCaught(s, rules.riskPct)) {
+    bust(s, player, 'pump', rules.fine + pump.profit);
+    sendToJail(s, player);
+  }
+}
+
+function addBuilding(s: GameState, player: PlayerId, tile: TileId): void {
+  const t = tileAt(tile);
+  if (t.kind !== 'property') return;
+  const deed = deedOf(s, tile);
+  if (deed.level === HOTEL_LEVEL - 1) {
+    s.hotelsLeft -= 1;
+    s.housesLeft += HOTEL_LEVEL - 1;
+  } else {
+    s.housesLeft -= 1;
+  }
+  deed.level += 1;
+  emit(s, { type: 'build', player, tile, level: deed.level });
+  if (BUSINESS) movePrice(s, t.group, BUSINESS.stock.buildPct);
+}
+
+/** Bankrot: akcie se prodají za tržní cenu, firmy z měst krachujícího dostanou ránu. */
+function liquidateBusiness(s: GameState, player: PlayerId, tiles: readonly TileId[]): void {
+  if (!s.market || !BUSINESS) return;
+  const p = playerOf(s, player);
+  for (const group of GROUP_ORDER) {
+    p.cash += (p.shares[group]?.count ?? 0) * s.market.prices[group];
+  }
+  p.shares = {};
+  const pump = s.market.pumps.find((candidate) => candidate.by === player);
+  if (pump) dump(s, pump);
+  const groups = new Set<GroupId>();
+  for (const tile of tiles) {
+    deedOf(s, tile).offBooks = false;
+    const t = tileAt(tile);
+    if (t.kind === 'property') groups.add(t.group);
+  }
+  for (const group of groups) movePrice(s, group, BUSINESS.stock.bankruptPct);
 }
 
 function moveTo(s: GameState, player: PlayerId, tile: TileId, rule?: RentRule): void {
@@ -330,7 +501,11 @@ function transferSide(s: GameState, from: PlayerId, to: PlayerId, side: TradeSid
   giver.cash -= side.cash;
   receiver.cash += side.cash;
   receiver.jailCards.push(...giver.jailCards.splice(0, side.jailCards));
-  for (const tile of side.tiles) deedOf(s, tile).owner = to;
+  for (const tile of side.tiles) {
+    const deed = deedOf(s, tile);
+    deed.owner = to;
+    deed.offBooks = false;
+  }
 }
 
 function chargeMortgageFees(s: GameState, receiver: PlayerId, tiles: readonly TileId[]): void {
@@ -356,6 +531,7 @@ function bankrupt(s: GameState, player: PlayerId, creditor: PlayerId | null): vo
   const p = playerOf(s, player);
   liquidateBuildings(s, player);
   const tiles = tilesOwnedBy(s, player);
+  liquidateBusiness(s, player, tiles);
   s.debts = s.debts.filter((debt) => debt.player !== player);
   for (const debt of s.debts) {
     if (debt.creditor === player) debt.creditor = null;
@@ -371,11 +547,13 @@ function bankrupt(s: GameState, player: PlayerId, creditor: PlayerId | null): vo
   } else {
     const receiver = playerOf(s, creditor);
     receiver.cash += p.cash;
+    receiver.dirty += p.dirty;
     receiver.jailCards.push(...p.jailCards);
     for (const tile of tiles) deedOf(s, tile).owner = creditor;
     chargeMortgageFees(s, creditor, tiles);
   }
   p.cash = 0;
+  p.dirty = 0;
   p.jailCards = [];
   p.bankrupt = true;
   p.inJail = false;
@@ -394,6 +572,7 @@ function finishGame(s: GameState, winner: PlayerId): void {
   s.debts = [];
   s.pendingAuctions = [];
   s.pendingBuy = null;
+  s.pendingTax = null;
   emit(s, { type: 'gameOver', winner });
 }
 
@@ -411,18 +590,33 @@ function nextTurn(s: GameState): void {
     if (next === s.firstPlayer) wrapped = true;
   } while (s.players[next]!.bankrupt);
   playerOf(s, s.active).doublesCount = 0;
-  if (wrapped) s.round += 1;
+  if (wrapped) {
+    s.round += 1;
+    marketNoise(s);
+  }
   s.active = next;
   s.turn += 1;
   s.phase = 'awaitRoll';
   s.pendingBuy = null;
   s.extraRoll = false;
   s.tradesThisTurn = 0;
+  s.launderedTiles = [];
+  s.pendingTax = null;
   if (s.settings.win.type === 'richestAfterRounds' && s.round > s.settings.win.rounds) {
     finishGame(s, richestPlayer(s));
     return;
   }
   emit(s, { type: 'turnStart', player: next, round: s.round });
+  tickPump(s, next);
+}
+
+/** Náhodný šum burzy na konci každého kola. */
+function marketNoise(s: GameState): void {
+  if (!s.market || !BUSINESS) return;
+  const { noisePct } = BUSINESS.stock;
+  for (const group of GROUP_ORDER) {
+    movePrice(s, group, randomInt(s, noisePct * 2 + 1) - noisePct);
+  }
 }
 
 /** Dotáhne automatické následky akce: konec hry, další dražbu a tah po bankrotu. */
@@ -592,16 +786,8 @@ function apply(s: GameState, action: Action): void {
       if (!canBuild(s, player, action.tile)) illegal('Tady teď stavět nejde');
       const t = tileAt(action.tile);
       if (t.kind !== 'property') illegal('Tady teď stavět nejde');
-      const deed = deedOf(s, action.tile);
-      p.cash -= t.houseCost;
-      if (deed.level === HOTEL_LEVEL - 1) {
-        s.hotelsLeft -= 1;
-        s.housesLeft += HOTEL_LEVEL - 1;
-      } else {
-        s.housesLeft -= 1;
-      }
-      deed.level += 1;
-      emit(s, { type: 'build', player, tile: action.tile, level: deed.level });
+      p.cash -= buildCost(s, player, action.tile);
+      addBuilding(s, player, action.tile);
       break;
     }
     case 'sellBuilding': {
@@ -696,7 +882,135 @@ function apply(s: GameState, action: Action): void {
       }
       break;
     }
+    case 'setOffBooks':
+      if (!canSetOffBooks(s, player, action.tile)) illegal('Tady to teď nejde');
+      deedOf(s, action.tile).offBooks = action.on;
+      break;
+    case 'launder': {
+      if (!canLaunder(s, player, action.tile, action.amount)) illegal('Tady teď prát nejde');
+      const net = launderNet(s, player, action.amount);
+      const risk = launderRiskPct(s, player);
+      p.dirty -= action.amount;
+      s.launderedTiles.push(action.tile);
+      if (isCaught(s, risk)) {
+        bust(s, player, 'launder', launderFine(action.amount));
+        sendToJail(s, player);
+      } else {
+        p.cash += net;
+        emit(s, { type: 'launder', player, tile: action.tile, amount: action.amount, net });
+      }
+      break;
+    }
+    case 'payTax':
+      requirePlainTurn(s, player);
+      if (s.phase !== 'awaitTax' || !s.pendingTax) illegal('Není co platit');
+      settleTax(s, player, s.pendingTax.amount);
+      break;
+    case 'bribeOfficial': {
+      if (!canBribeOfficial(s, player) || !BUSINESS) illegal('Úředníka teď nejde uplatit');
+      const rules = BUSINESS.official;
+      const cost = bribeCost(s, player, rules);
+      const full = s.pendingTax!.amount;
+      payBribe(s, player, cost);
+      emit(s, { type: 'bribe', player, kind: 'official', cost });
+      if (isCaught(s, bribeRiskPct(s, player, rules))) {
+        settleTax(s, player, full);
+        bust(s, player, 'official', rules.fine);
+        sendToJail(s, player);
+      } else {
+        settleTax(s, player, Math.floor((full * (100 - BUSINESS.taxDiscountPct)) / 100));
+      }
+      break;
+    }
+    case 'bribePolice': {
+      if (!canBribePolice(s, player) || !BUSINESS) illegal('Policajta teď nejde uplatit');
+      const rules = BUSINESS.police;
+      const cost = bribeCost(s, player, rules);
+      payBribe(s, player, cost);
+      emit(s, { type: 'bribe', player, kind: 'police', cost });
+      if (isCaught(s, bribeRiskPct(s, player, rules))) {
+        // Tenhle tah se už nehází, takže hráč sedí o kolo déle.
+        bust(s, player, 'police', rules.fine);
+        s.phase = 'awaitEnd';
+        s.extraRoll = false;
+      } else {
+        p.inJail = false;
+        p.jailTurns = 0;
+        emit(s, { type: 'jailOut', player, how: 'bribe' });
+      }
+      break;
+    }
+    case 'bribeBuild': {
+      if (!canBribeBuild(s, player, action.tile) || !BUSINESS) illegal('Tohle úřad nepovolí');
+      const rules = BUSINESS.build;
+      const cost = bribeCost(s, player, rules);
+      p.cash -= buildCost(s, player, action.tile);
+      payBribe(s, player, cost);
+      emit(s, { type: 'bribe', player, kind: 'build', cost });
+      if (isCaught(s, bribeRiskPct(s, player, rules))) {
+        // Stavba se zbourá, takže peníze za ni jsou pryč a budova nepřibude.
+        bust(s, player, 'build', rules.fine);
+        sendToJail(s, player);
+      } else {
+        addBuilding(s, player, action.tile);
+      }
+      break;
+    }
+    case 'buyShares': {
+      if (!canBuyShares(s, player, action.group, action.count)) illegal('Akcie teď nejdou koupit');
+      const price = sharePrice(s, action.group);
+      const holding = p.shares[action.group] ?? { count: 0, cost: 0 };
+      p.cash -= action.count * price;
+      p.shares[action.group] = {
+        count: holding.count + action.count,
+        cost: holding.cost + action.count * price,
+      };
+      emit(s, { ...sharesEvent(action, price), buy: true });
+      break;
+    }
+    case 'sellShares': {
+      if (!canSellShares(s, player, action.group, action.count)) illegal('Akcie teď nejdou prodat');
+      const { basis, proceeds } = saleOf(s, player, action.group, action.count);
+      const holding = p.shares[action.group]!;
+      p.cash += proceeds;
+      if (holding.count === action.count) {
+        delete p.shares[action.group];
+      } else {
+        holding.count -= action.count;
+        holding.cost -= basis;
+      }
+      const pump = pumpOn(s, action.group);
+      if (pump?.by === player) pump.profit += Math.max(0, proceeds - basis);
+      emit(s, { ...sharesEvent(action, sharePrice(s, action.group)), buy: false });
+      break;
+    }
+    case 'pumpDump': {
+      if (!canPumpDump(s, player, action.group) || !BUSINESS) illegal('Pump & dump teď nejde');
+      p.dirty -= BUSINESS.pump.cost;
+      movePrice(s, action.group, pumpSwing(s, player).up);
+      s.market!.pumps.push({
+        group: action.group,
+        by: player,
+        turnsLeft: BUSINESS.pump.turns,
+        profit: 0,
+      });
+      emit(s, {
+        type: 'pump',
+        player,
+        group: action.group,
+        price: sharePrice(s, action.group),
+      });
+      break;
+    }
   }
+}
+
+function sharesEvent(
+  action: { player: PlayerId; group: GroupId; count: number },
+  price: number,
+): { type: 'shares'; player: PlayerId; group: GroupId; count: number; price: number } {
+  const { player, group, count } = action;
+  return { type: 'shares', player, group, count, price };
 }
 
 /** Čistá funkce: původní stav se nemění. Neplatná akce vyhodí `IllegalActionError`. */
