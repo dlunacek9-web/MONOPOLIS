@@ -12,7 +12,7 @@ Majitel projektu je vibecoder. Neprogramuje ručně, hru řídí a testuje. Komu
 - Jen PC, klávesnice a myš.
 - **Čeština.** Všechny texty hry patří do `src/i18n/cs.ts`. V kódu mimo tento soubor nejsou žádné herní texty.
 - **Assety** jen low-poly cartoon s CC0 nebo jinou volnou licencí. Každý zapiš do `CREDITS.md`.
-- **Právně čisté.** Nikde slovo „Monopoly“, žádné assety ani loga Hasbra, žádní skuteční žijící lidé ani politici jmény, žádná skutečná loga firem. Parodie a archetypy jsou v pořádku. Názvy, karty, ceny a vzhled jsou naše vlastní, přebíráme jen herní mechaniky.
+- **Právně čisté.** Nikde slovo „Monopoly“, žádné assety ani loga Hasbra, žádní skuteční žijící lidé ani politici jmény, žádná skutečná loga firem. Parodie a archetypy jsou v pořádku. Názvy, karty, ceny a vzhled jsou naše vlastní, přebíráme jen herní mechaniky. **Výjimka:** režim Klasika je na přání majitele věrná kopie originálu jen pro školní účely (originální názvy polí a znění karet, `src/core/sets/classic.ts` a `CLASSIC_TEXTS` v `cs.ts`). Slovo „Monopoly“, loga a vzhled Hasbra zůstávají zakázané i tam.
 
 Když by něco tato omezení porušilo, zastav se a zeptej se.
 

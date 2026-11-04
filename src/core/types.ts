@@ -3,7 +3,7 @@ export type TileId = number;
 
 export type GroupId = 'most' | 'ostrava' | 'usti' | 'olomouc' | 'plzen' | 'brno' | 'vary' | 'praha';
 export type DeckId = 'tip' | 'urad';
-export type GameMode = 'classic' | 'monopolis';
+export type GameMode = 'classic' | 'nextlevel';
 export type Personality = 'zralok' | 'lakomec' | 'kriminalnik' | 'vyvazeny';
 export type Difficulty = 'easy' | 'normal' | 'hard';
 
@@ -187,3 +187,32 @@ export type Action =
   | { type: 'endTurn'; player: PlayerId }
   /** Místo u stolu přebírá člověk nebo bot. Posílá jen hostitel, nikdy hráč po síti. */
   | { type: 'setController'; player: PlayerId; name: string; bot: BotConfig | null };
+
+export type CardEffect =
+  | { kind: 'gain'; amount: number }
+  | { kind: 'pay'; amount: number }
+  | { kind: 'gainEach'; amount: number }
+  | { kind: 'payEach'; amount: number }
+  | { kind: 'moveTo'; tile: TileId }
+  | { kind: 'moveBack'; steps: number }
+  | { kind: 'nearest'; what: 'station' | 'utility' }
+  | { kind: 'toJail' }
+  | { kind: 'jailCard' }
+  | { kind: 'repairs'; perHouse: number; perHotel: number };
+
+/** Čísla a data jedné sady pravidel. Částky jsou v celých korunách. */
+export interface Ruleset {
+  board: readonly Tile[];
+  cards: Record<DeckId, readonly CardEffect[]>;
+  /** Základní jednotka částek: zaokrouhlování, kroky v obchodech a u botů. */
+  moneyUnit: number;
+  startCash: number;
+  startSalary: number;
+  jailBail: number;
+  minBidStep: number;
+  stationRents: readonly number[];
+  utilityRateOne: number;
+  utilityRateBoth: number;
+  totalHouses: number;
+  totalHotels: number;
+}

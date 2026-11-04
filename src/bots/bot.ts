@@ -1,6 +1,7 @@
 import {
   JAIL_BAIL,
   MIN_BID_STEP,
+  MONEY_UNIT,
   actorOf,
   canBuild,
   canMortgage,
@@ -37,12 +38,22 @@ interface Traits {
   acceptMargin: number;
 }
 
-const TRAITS: Record<Personality, Traits> = {
-  zralok: { buyReserve: 30_000, buildReserve: 120_000, auctionFactor: 1.35, acceptMargin: 1.2 },
-  lakomec: { buyReserve: 300_000, buildReserve: 600_000, auctionFactor: 0.75, acceptMargin: 1.0 },
-  kriminalnik: { buyReserve: 0, buildReserve: 40_000, auctionFactor: 1.2, acceptMargin: 1.1 },
-  vyvazeny: { buyReserve: 120_000, buildReserve: 220_000, auctionFactor: 1.0, acceptMargin: 1.1 },
+/** Rezervy jsou v jednotkách `MONEY_UNIT` (Next level: tisíce Kč, Klasika: Kč). */
+const TRAIT_TABLE: Record<Personality, Traits> = {
+  zralok: { buyReserve: 30, buildReserve: 120, auctionFactor: 1.35, acceptMargin: 1.2 },
+  lakomec: { buyReserve: 300, buildReserve: 600, auctionFactor: 0.75, acceptMargin: 1.0 },
+  kriminalnik: { buyReserve: 0, buildReserve: 40, auctionFactor: 1.2, acceptMargin: 1.1 },
+  vyvazeny: { buyReserve: 120, buildReserve: 220, auctionFactor: 1.0, acceptMargin: 1.1 },
 };
+
+function traitsOf(personality: Personality): Traits {
+  const t = TRAIT_TABLE[personality];
+  return {
+    ...t,
+    buyReserve: t.buyReserve * MONEY_UNIT,
+    buildReserve: t.buildReserve * MONEY_UNIT,
+  };
+}
 
 interface Skill {
   setBonus: number;
@@ -56,13 +67,13 @@ const SKILLS: Record<Difficulty, Skill> = {
   hard: { setBonus: 1.5, danger: 1.25, tradeEvery: 2 },
 };
 
-const JAIL_CARD_VALUE = 40_000;
-const CONSOLIDATE_CASH = 500_000;
+const jailCardValue = () => 40 * MONEY_UNIT;
+const consolidateCash = () => 500 * MONEY_UNIT;
 
 function botOf(s: GameState, player: PlayerId) {
   const bot = playerOf(s, player).bot;
   return {
-    traits: TRAITS[bot?.personality ?? 'vyvazeny'],
+    traits: traitsOf(bot?.personality ?? 'vyvazeny'),
     skill: SKILLS[bot?.difficulty ?? 'normal'],
   };
 }
@@ -106,9 +117,9 @@ export function acceptsTrade(s: GameState, me: PlayerId, offer: TradeOffer): boo
   const other = offer.from === me ? offer.to : offer.from;
   const received = offer.from === me ? offer.get : offer.give;
   const given = offer.from === me ? offer.give : offer.get;
-  let gain = received.cash + received.jailCards * JAIL_CARD_VALUE;
+  let gain = received.cash + received.jailCards * jailCardValue();
   for (const tile of received.tiles) gain += tileValue(s, me, tile);
-  let loss = given.cash + given.jailCards * JAIL_CARD_VALUE;
+  let loss = given.cash + given.jailCards * jailCardValue();
   for (const tile of given.tiles) {
     const value = tileValue(s, me, tile);
     loss += wouldComplete(s, other, tile) ? value * dangerPremium(s, me) : value;
@@ -135,10 +146,12 @@ function chooseBid(s: GameState, me: PlayerId): Action {
   const p = playerOf(s, me);
   const { traits } = botOf(s, me);
   const worth = tileValue(s, me, auction.tile) * traits.auctionFactor;
-  const limit = Math.floor(Math.min(p.cash - traits.buyReserve / 2, worth) / 1000) * 1000;
+  const limit =
+    Math.floor(Math.min(p.cash - traits.buyReserve / 2, worth) / MONEY_UNIT) * MONEY_UNIT;
   const needed = minBid(s);
   if (needed > limit) return { type: 'passBid', player: me };
-  const bump = Math.floor(((ownablePrice(auction.tile) ?? 0) * 0.15) / 5000) * 5000;
+  const bump =
+    Math.floor(((ownablePrice(auction.tile) ?? 0) * 0.15) / (5 * MONEY_UNIT)) * (5 * MONEY_UNIT);
   const amount = Math.min(limit, Math.max(needed, auction.bid + Math.max(bump, MIN_BID_STEP)));
   return { type: 'bid', player: me, amount };
 }
@@ -193,16 +206,16 @@ function proposeTrade(s: GameState, me: PlayerId): Action | null {
         offers.push({ to: owner, give: { ...emptySide(), tiles: [mine], cash }, get });
       }
       const premium = dangerPremium(s, owner) * 1.15 * botOf(s, owner).traits.acceptMargin;
-      const cash = Math.ceil((tileValue(s, owner, tile) * premium) / 1000) * 1000;
+      const cash = Math.ceil((tileValue(s, owner, tile) * premium) / MONEY_UNIT) * MONEY_UNIT;
       if (p.cash - cash >= traits.buyReserve / 2) {
         offers.push({ to: owner, give: { ...emptySide(), cash }, get });
       }
-    } else if (p.cash >= CONSOLIDATE_CASH) {
+    } else if (p.cash >= consolidateCash()) {
       const others = otherGroupTiles(tile);
       const iOwnSome = others.some((id) => deedOf(s, id).owner === me);
       const ownerHasOnlyThis = others.every((id) => deedOf(s, id).owner !== owner);
       if (iOwnSome && ownerHasOnlyThis) {
-        const cash = Math.ceil((price * 1.4) / 1000) * 1000;
+        const cash = Math.ceil((price * 1.4) / MONEY_UNIT) * MONEY_UNIT;
         offers.push({ to: owner, give: { ...emptySide(), cash }, get });
       }
     }

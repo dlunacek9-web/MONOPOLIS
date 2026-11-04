@@ -1102,3 +1102,10 @@ td:last-child {
   color: var(--muted);
   font-weight: 500;
 }
+
+.mode-hint {
+  margin: -6px 0 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--muted, #b9a99a);
+}

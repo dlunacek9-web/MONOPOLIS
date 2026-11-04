@@ -10,7 +10,7 @@ Hra je plně hratelná v jednom hráči. Každou roli standardně hraje bot a sp
 
 | Nastavení                   | Možnosti                                                                      |
 | --------------------------- | ----------------------------------------------------------------------------- |
-| Režim                       | Klasika (jen základ), MONOPOLIS (nová vrstva, od Fáze 4)                      |
+| Režim                       | Klasika (věrná kopie originální hry), Next level (naše česká satira, od Fáze 4 s byznysovou vrstvou) |
 | Výhra                       | Poslední nezbankrotovaný; nejbohatší po X kolech; první na Y Kč čistého jmění |
 | Boti                        | 1–3, obtížnost Lehká / Normální / Těžká                                       |
 | Osobnosti botů              | Žralok, Lakomec, Kriminálník, Vyvážený (přidělují se náhodně)                 |
@@ -28,7 +28,13 @@ Hra je plně hratelná v jednom hráči. Každou roli standardně hraje bot a sp
 
 Čisté jmění = hotovost + cena pozemků (zastavený pozemek jen zástavní hodnota) + pořizovací cena budov.
 
-## 2. Deska
+### Dva režimy
+
+- **Klasika:** co nejvěrnější kopie originální hry pro školní zadání (jen pro výuku). Originální pravidla, deska, ceny, nájmy a 2×16 karet, částky 1 500 / 200 / 50 Kč. Sada je v `src/core/sets/classic.ts`, názvy a texty karet v `cs.ts` (`CLASSIC_TEXTS`). Pozor: původní názvy ulic a karet jsou pojmenování třetí strany, proto repo nikde nepoužívá slovo „Monopoly“.
+- **Next level:** tahle hra, tedy vše níže v kapitolách 2–10. Sada je v `src/core/sets/nextlevel.ts`.
+- Režim se vybírá v lobby (sólo i multiplayer) a je součástí `GameSettings.mode`. Jádro přepíná sadu přes `useRuleset(mode)`, UI texty přes `useTexts(mode)`.
+
+## 2. Deska (režim Next level)
 
 Kruh 40 políček. Každá barevná skupina je české město, od nejlevnějšího po nejdražší.
 

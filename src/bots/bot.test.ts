@@ -35,7 +35,7 @@ describe('celé partie botů', () => {
       it(`${count} boti, ${difficulty}: partie dojde do konce jen s legálními akcemi`, () => {
         for (let seed = 1; seed <= 25; seed++) {
           const game = createGame(
-            { mode: 'classic', win: lastStanding },
+            { mode: 'nextlevel', win: lastStanding },
             setups(count, seed, difficulty),
             seed * 1000 + count,
           );
@@ -51,7 +51,7 @@ describe('celé partie botů', () => {
   it('ostatní podmínky výhry také končí', () => {
     const rounds = playOut(
       createGame(
-        { mode: 'classic', win: { type: 'richestAfterRounds', rounds: 15 } },
+        { mode: 'nextlevel', win: { type: 'richestAfterRounds', rounds: 15 } },
         setups(3, 1, 'normal'),
         5,
       ),
@@ -60,7 +60,7 @@ describe('celé partie botů', () => {
     expect(rounds.state.round).toBe(16);
     const money = playOut(
       createGame(
-        { mode: 'classic', win: { type: 'firstToMoney', amount: 3_000_000 } },
+        { mode: 'nextlevel', win: { type: 'firstToMoney', amount: 3_000_000 } },
         setups(4, 2, 'hard'),
         6,
       ),
@@ -69,7 +69,7 @@ describe('celé partie botů', () => {
   });
   it('stejný seed dá stejnou partii', () => {
     const make = () =>
-      createGame({ mode: 'classic', win: lastStanding }, setups(3, 2, 'normal'), 99);
+      createGame({ mode: 'nextlevel', win: lastStanding }, setups(3, 2, 'normal'), 99);
     expect(playOut(make()).state).toEqual(playOut(make()).state);
   });
 });
@@ -78,7 +78,7 @@ describe('rozhodnutí botů', () => {
   const none = { tiles: [], cash: 0, jailCards: 0 };
   function duel(): GameState {
     const s = createGame(
-      { mode: 'classic', win: { type: 'lastStanding' } },
+      { mode: 'nextlevel', win: { type: 'lastStanding' } },
       setups(2, 3, 'normal'),
       1,
     );
@@ -108,7 +108,7 @@ describe('rozhodnutí botů', () => {
 describe('LocalTransport', () => {
   it('pošle nový stav odběratelům a neplatnou akci odmítne', () => {
     const game = createGame(
-      { mode: 'classic', win: { type: 'lastStanding' } },
+      { mode: 'nextlevel', win: { type: 'lastStanding' } },
       setups(2, 0, 'easy'),
       3,
     );
