@@ -26,18 +26,25 @@ export type WinCondition =
 export interface GameSettings {
   mode: GameMode;
   win: WinCondition;
+  /** Počáteční hotovost. Bez hodnoty platí `START_CASH`. */
+  startCash?: number;
+}
+
+export interface BotConfig {
+  personality: Personality;
+  difficulty: Difficulty;
 }
 
 export interface PlayerSetup {
   name: string;
   /** Bez `bot` jde o lidského hráče. */
-  bot?: { personality: Personality; difficulty: Difficulty };
+  bot?: BotConfig;
 }
 
 export interface Player {
   id: PlayerId;
   name: string;
-  bot: { personality: Personality; difficulty: Difficulty } | null;
+  bot: BotConfig | null;
   cash: number;
   position: TileId;
   inJail: boolean;
@@ -120,7 +127,8 @@ export type GameEventBody =
   | { type: 'debt'; player: PlayerId; amount: number; creditor: PlayerId | null }
   | { type: 'debtPaid'; player: PlayerId; amount: number; creditor: PlayerId | null }
   | { type: 'bankrupt'; player: PlayerId; creditor: PlayerId | null }
-  | { type: 'gameOver'; winner: PlayerId };
+  | { type: 'gameOver'; winner: PlayerId }
+  | { type: 'controller'; player: PlayerId; previous: string; bot: boolean };
 
 export type GameEvent = GameEventBody & { seq: number };
 
@@ -176,4 +184,6 @@ export type Action =
   | { type: 'rejectTrade'; player: PlayerId }
   | { type: 'settleDebt'; player: PlayerId }
   | { type: 'declareBankruptcy'; player: PlayerId }
-  | { type: 'endTurn'; player: PlayerId };
+  | { type: 'endTurn'; player: PlayerId }
+  /** Místo u stolu přebírá člověk nebo bot. Posílá jen hostitel, nikdy hráč po síti. */
+  | { type: 'setController'; player: PlayerId; name: string; bot: BotConfig | null };

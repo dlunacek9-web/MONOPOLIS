@@ -1040,3 +1040,65 @@ td:last-child {
   color: #4b4a58;
   font-weight: 700;
 }
+
+/* Multiplayer */
+.mp-lobby {
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.room-code {
+  margin: 0;
+  font-size: 44px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+}
+
+.code-input {
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+.mp-or {
+  margin: 0;
+  text-align: center;
+  color: var(--muted);
+}
+
+.mp-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  width: 100%;
+  text-align: left;
+}
+
+.seats,
+.mp-summary {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.seat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.seat small {
+  color: var(--muted);
+}
+
+.seat-bot strong {
+  color: var(--muted);
+  font-weight: 500;
+}

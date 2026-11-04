@@ -75,7 +75,7 @@ export function createGame(
       id,
       name: setup.name,
       bot: setup.bot ?? null,
-      cash: START_CASH,
+      cash: settings.startCash ?? START_CASH,
       position: 0,
       inJail: false,
       jailTurns: 0,
@@ -508,6 +508,13 @@ function apply(s: GameState, action: Action): void {
   if (!s.players[player] || playerOf(s, player).bankrupt) illegal('Neplatný hráč');
   const p = playerOf(s, player);
   switch (action.type) {
+    case 'setController': {
+      const previous = p.name;
+      p.name = action.name;
+      p.bot = action.bot;
+      emit(s, { type: 'controller', player, previous, bot: action.bot !== null });
+      break;
+    }
     case 'roll':
       doRoll(s, player);
       break;

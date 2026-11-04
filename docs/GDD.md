@@ -8,12 +8,23 @@ Hra je plně hratelná v jednom hráči. Každou roli standardně hraje bot a sp
 
 ## 1. Režimy a nastavení partie
 
-| Nastavení      | Možnosti                                                                      |
-| -------------- | ----------------------------------------------------------------------------- |
-| Režim          | Klasika (jen základ), MONOPOLIS (nová vrstva, od Fáze 4)                      |
-| Výhra          | Poslední nezbankrotovaný; nejbohatší po X kolech; první na Y Kč čistého jmění |
-| Boti           | 1–3, obtížnost Lehká / Normální / Těžká                                       |
-| Osobnosti botů | Žralok, Lakomec, Kriminálník, Vyvážený (přidělují se náhodně)                 |
+| Nastavení                   | Možnosti                                                                      |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| Režim                       | Klasika (jen základ), MONOPOLIS (nová vrstva, od Fáze 4)                      |
+| Výhra                       | Poslední nezbankrotovaný; nejbohatší po X kolech; první na Y Kč čistého jmění |
+| Boti                        | 1–3, obtížnost Lehká / Normální / Těžká                                       |
+| Osobnosti botů              | Žralok, Lakomec, Kriminálník, Vyvážený (přidělují se náhodně)                 |
+| Počáteční hotovost          | 1 000 000, 1 500 000 (výchozí), 2 000 000 Kč                                  |
+| Místa u stolu (multiplayer) | 2–4, volná místa obsadí boti                                                  |
+
+### Multiplayer
+
+- Hostitel založí místnost a pošle kód nebo odkaz. Pravidla i boti běží jen u něj, ostatní posílají akce a dostávají hotový stav.
+- Hráči se najdou přes veřejné bezplatné servery sítě Nostr, herní data pak jdou přímo mezi prohlížeči (WebRTC). Na některých sítích se přímé spojení nenaváže, placený přenosový server záměrně nepoužíváme.
+- Výpadek hosta: 15 sekund čekání, pak za něj hraje Vyvážený bot. Po návratu ze stejné karty prohlížeče dostane hráč místo zpátky.
+- Příchozí během partie si vybere bota a převezme jeho místo, majetek i peníze. Když žádný bot nezbývá, je místnost plná.
+- Odchod hostitele partii ukončí, hostitel se nepřenáší na jiného hráče.
+- Rychlost hry je jen v sólu.
 
 Čisté jmění = hotovost + cena pozemků (zastavený pozemek jen zástavní hodnota) + pořizovací cena budov.
 
