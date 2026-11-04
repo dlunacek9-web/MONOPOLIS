@@ -1,70 +1,75 @@
 import { createGame } from '../core';
-import type { Difficulty, Personality, PlayerSetup, WinCondition } from '../core';
 import { cs } from '../i18n/cs';
+import { LocalTransport } from '../net/local';
+import { DEFAULT_MATCH, matchSettings, matchSetups, randomSeed } from '../net/match';
+import type { MatchOptions } from '../net/match';
 import { LocalStorageProfile } from '../profile/profile';
-import { escapeHtml } from './html';
 import { GameScreen } from './game';
+import type { GameRole } from './game';
+import { escapeHtml } from './html';
+import { option, readMatchFields, renderMatchFields, wireMatchFields } from './match-fields';
+import { MultiplayerScreens, roomCodeFromUrl } from './multiplayer';
+import type { GameTransport } from '../net/transport';
 
-interface LobbyPrefs {
+interface LobbyPrefs extends MatchOptions {
   name: string;
-  bots: number;
-  difficulty: Difficulty;
-  win: 'last' | 'rounds' | 'money';
-  rounds: number;
-  money: number;
 }
 
 const DEFAULT_PREFS: LobbyPrefs = {
+  ...DEFAULT_MATCH,
   name: cs.lobby.defaultName,
-  bots: 3,
-  difficulty: 'normal',
-  win: 'last',
-  rounds: 20,
-  money: 5_000_000,
 };
-
-const PERSONALITIES: Personality[] = ['zralok', 'lakomec', 'kriminalnik', 'vyvazeny'];
-
-function randomSeed(): number {
-  return crypto.getRandomValues(new Uint32Array(1))[0]! | 0;
-}
-
-function pickPersonalities(count: number, seed: number): Personality[] {
-  const pool = [...PERSONALITIES];
-  const result: Personality[] = [];
-  let value = seed >>> 0;
-  for (let i = 0; i < count; i++) {
-    result.push(pool.splice(value % pool.length, 1)[0]!);
-    value = Math.floor(value / 7) + 13;
-  }
-  return result;
-}
-
-function option(value: string, label: string, selected: boolean, disabled = false): string {
-  return `<option value="${value}"${selected ? ' selected' : ''}${disabled ? ' disabled' : ''}>${escapeHtml(label)}</option>`;
-}
 
 export function startApp(root: HTMLElement): void {
   const profile = new LocalStorageProfile();
   let game: GameScreen | null = null;
 
-  function showMenu(): void {
+  function stopGame(): void {
     game?.stop();
     game = null;
+  }
+
+  function loadPrefs(): LobbyPrefs {
+    return { ...DEFAULT_PREFS, ...profile.load<Partial<LobbyPrefs>>('lobby') };
+  }
+
+  const multiplayer = new MultiplayerScreens(root, {
+    loadName: () => loadPrefs().name,
+    saveName: (name) => profile.save('lobby', { ...loadPrefs(), name }),
+    loadMatch: () => loadPrefs(),
+    saveMatch: (match) => profile.save('lobby', { ...loadPrefs(), ...match }),
+    showMenu,
+    stopGame,
+    startGame: (
+      transport: GameTransport,
+      seat: number,
+      role: GameRole,
+      callbacks: { onExit: () => void; onNewGame: () => void },
+    ) => {
+      stopGame();
+      game = new GameScreen(root, transport, seat, callbacks, role);
+    },
+  });
+
+  function showMenu(): void {
+    stopGame();
     root.innerHTML = `
       <main class="menu">
         <h1 class="logo">${cs.title}</h1>
         <p class="tagline">${cs.tagline}</p>
         <button class="btn primary big" data-go="lobby" data-primary>${cs.menu.solo}</button>
-        <button class="btn big" disabled>${cs.menu.multiplayer} <small>(${cs.menu.soon})</small></button>
+        <button class="btn big" data-go="multiplayer">${cs.menu.multiplayer}</button>
       </main>`;
     root.querySelector('[data-go="lobby"]')?.addEventListener('click', showLobby);
+    root
+      .querySelector('[data-go="multiplayer"]')
+      ?.addEventListener('click', () => multiplayer.showEntry());
   }
 
   function showLobby(): void {
-    game?.stop();
-    game = null;
-    const prefs = { ...DEFAULT_PREFS, ...profile.load<Partial<LobbyPrefs>>('lobby') };
+    stopGame();
+    const prefs = loadPrefs();
+    const bots = Math.min(3, Math.max(1, prefs.seats - 1));
     root.innerHTML = `
       <main class="menu">
         <h2>${cs.lobby.title}</h2>
@@ -74,35 +79,10 @@ export function startApp(root: HTMLElement): void {
           </label>
           <label>${cs.lobby.bots}
             <select name="bots">
-              ${[1, 2, 3].map((n) => option(String(n), String(n), prefs.bots === n)).join('')}
+              ${[1, 2, 3].map((n) => option(String(n), String(n), bots === n)).join('')}
             </select>
           </label>
-          <label>${cs.lobby.difficulty}
-            <select name="difficulty">
-              ${(['easy', 'normal', 'hard'] as const)
-                .map((d) => option(d, cs.difficulty[d], prefs.difficulty === d))
-                .join('')}
-            </select>
-          </label>
-          <label>${cs.lobby.mode}
-            <select name="mode">
-              ${option('classic', cs.lobby.modeClassic, true)}
-              ${option('monopolis', cs.lobby.modeMonopolis, false, true)}
-            </select>
-          </label>
-          <label>${cs.lobby.win}
-            <select name="win">
-              ${option('last', cs.lobby.winLast, prefs.win === 'last')}
-              ${option('rounds', cs.lobby.winRounds, prefs.win === 'rounds')}
-              ${option('money', cs.lobby.winMoney, prefs.win === 'money')}
-            </select>
-          </label>
-          <label data-for="rounds">${cs.lobby.rounds}
-            <input name="rounds" type="number" min="1" max="200" required value="${prefs.rounds}" />
-          </label>
-          <label data-for="money">${cs.lobby.money}
-            <input name="money" type="number" min="1600000" step="100000" required value="${prefs.money}" />
-          </label>
+          ${renderMatchFields(prefs)}
           <div class="row">
             <button class="btn" type="button" data-go="menu">${cs.lobby.back}</button>
             <button class="btn primary" type="submit">${cs.lobby.start}</button>
@@ -110,51 +90,25 @@ export function startApp(root: HTMLElement): void {
         </form>
       </main>`;
     const form = root.querySelector<HTMLFormElement>('#lobby')!;
-    const syncWinFields = () => {
-      const win = new FormData(form).get('win');
-      for (const field of ['rounds', 'money']) {
-        const label = form.querySelector<HTMLElement>(`[data-for="${field}"]`)!;
-        const visible = win === field;
-        label.hidden = !visible;
-        label.querySelector('input')!.disabled = !visible;
-      }
-    };
-    syncWinFields();
-    form.addEventListener('change', syncWinFields);
+    wireMatchFields(form);
     root.querySelector('[data-go="menu"]')?.addEventListener('click', showMenu);
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const data = new FormData(form);
       const next: LobbyPrefs = {
+        ...readMatchFields(form, prefs),
+        seats: Number(data.get('bots')) + 1,
         name: String(data.get('name')).trim() || cs.lobby.defaultName,
-        bots: Number(data.get('bots')),
-        difficulty: data.get('difficulty') as Difficulty,
-        win: data.get('win') as LobbyPrefs['win'],
-        rounds: Number(data.get('rounds') ?? prefs.rounds),
-        money: Number(data.get('money') ?? prefs.money),
       };
       profile.save('lobby', next);
-      startGame(next);
+      startSolo(next);
     });
   }
 
-  function startGame(prefs: LobbyPrefs): void {
+  function startSolo(prefs: LobbyPrefs): void {
     const seed = randomSeed();
-    const win: WinCondition =
-      prefs.win === 'rounds'
-        ? { type: 'richestAfterRounds', rounds: prefs.rounds }
-        : prefs.win === 'money'
-          ? { type: 'firstToMoney', amount: prefs.money }
-          : { type: 'lastStanding' };
-    const setups: PlayerSetup[] = [
-      { name: prefs.name },
-      ...pickPersonalities(prefs.bots, seed).map((personality) => ({
-        name: cs.botNames[personality],
-        bot: { personality, difficulty: prefs.difficulty },
-      })),
-    ];
-    const state = createGame({ mode: 'classic', win }, setups, seed);
-    game = new GameScreen(root, state, 0, {
+    const state = createGame(matchSettings(prefs), matchSetups([prefs.name], prefs, seed), seed);
+    game = new GameScreen(root, new LocalTransport(state), 0, {
       onExit: showMenu,
       onNewGame: showLobby,
     });
@@ -173,5 +127,14 @@ export function startApp(root: HTMLElement): void {
     }
   });
 
-  showMenu();
+  // Odkaz od kamaráda vede rovnou na připojení do jeho místnosti.
+  const invited = roomCodeFromUrl();
+  if (invited) multiplayer.showEntry(invited);
+  else showMenu();
+
+  // Odkaz vložený do už otevřené karty stránku nenačte znovu. Běžící partii nepřeruší.
+  window.addEventListener('hashchange', () => {
+    const code = roomCodeFromUrl();
+    if (code && !game && !multiplayer.inRoom) multiplayer.showEntry(code);
+  });
 }

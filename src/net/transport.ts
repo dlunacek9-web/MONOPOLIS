@@ -2,7 +2,7 @@ import type { Action, GameState } from '../core';
 
 export type DispatchResult = { ok: true } | { ok: false; error: string };
 
-/** Hra neví, jestli běží lokálně, nebo přes síť. Trystero přibude ve Fázi 3. */
+/** Hra neví, jestli běží lokálně, nebo přes síť. */
 export interface GameTransport {
   getState(): GameState;
   dispatch(action: Action): DispatchResult;

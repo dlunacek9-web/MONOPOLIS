@@ -20,6 +20,10 @@ export function formatEvent(s: GameState, e: GameEvent): string {
   switch (e.type) {
     case 'gameStart':
       return l.gameStart;
+    case 'controller':
+      return e.bot
+        ? l.controllerBot(name(s, e.player))
+        : l.controllerHuman(name(s, e.player), e.previous);
     case 'turnStart':
       return l.turnStart(name(s, e.player), e.round);
     case 'roll':

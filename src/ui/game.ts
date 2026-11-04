@@ -26,7 +26,6 @@ import {
 import type { Action, GameEvent, GameState, PlayerId, TileId, TradeSide } from '../core';
 import { cs, formatMoney } from '../i18n/cs';
 import { BotRunner } from '../bots/runner';
-import { LocalTransport } from '../net/local';
 import type { GameTransport } from '../net/transport';
 import { publishGameEnd, summarizeGame } from '../profile/profile';
 import { CityView } from '../render/city-view';
@@ -42,6 +41,8 @@ interface TradeDraft {
   error: boolean;
 }
 
+export type GameRole = 'solo' | 'host' | 'guest';
+
 type Speed = 'normal' | 'fast' | 'turbo';
 const SPEED_MS: Record<Speed, number> = { normal: 900, fast: 200, turbo: 15 };
 
@@ -55,8 +56,9 @@ function button(label: string, action: string, attrs = '', primary = false): str
 }
 
 export class GameScreen {
-  private readonly transport: GameTransport;
-  private readonly bots: BotRunner;
+  /** U hosta v multiplayeru boti neběží, hraje je hostitel. */
+  private readonly bots: BotRunner | null;
+  private readonly unsubscribe: () => void;
   private selectedTile: TileId | null = null;
   private draft: TradeDraft | null = null;
   private speed: Speed = 'normal';
@@ -70,9 +72,10 @@ export class GameScreen {
 
   constructor(
     private readonly root: HTMLElement,
-    state: GameState,
+    private readonly transport: GameTransport,
     private readonly me: PlayerId,
     private readonly callbacks: { onExit: () => void; onNewGame: () => void },
+    private readonly role: GameRole = 'solo',
   ) {
     this.root.innerHTML = `
       <div class="scene-host"></div>
@@ -80,11 +83,10 @@ export class GameScreen {
       <div class="ui"></div>`;
     this.ui = this.root.querySelector<HTMLElement>('.ui')!;
     this.tooltip = this.root.querySelector<HTMLElement>('.tile-tooltip')!;
-    this.view = this.createView(state);
-    this.transport = new LocalTransport(state);
+    this.view = this.createView(transport.getState());
     // Pořadí je důležité: město se musí překreslit dřív, než si bot spočítá čekání na auto.
-    this.transport.subscribe(() => this.render());
-    this.bots = new BotRunner(this.transport, (s) => this.delay(s));
+    this.unsubscribe = this.transport.subscribe(() => this.render());
+    this.bots = role === 'guest' ? null : new BotRunner(this.transport, (s) => this.delay(s));
     this.root.onclick = (event) => this.onClick(event);
     this.root.oninput = (event) => this.onInput(event);
     this.root.onsubmit = (event) => this.onSubmit(event);
@@ -92,7 +94,8 @@ export class GameScreen {
   }
 
   stop(): void {
-    this.bots.stop();
+    this.unsubscribe();
+    this.bots?.stop();
     this.view?.dispose();
     this.root.onclick = null;
     this.root.oninput = null;
@@ -459,10 +462,12 @@ export class GameScreen {
           }</button>`,
       )
       .join('');
+    // Rychlost je jen pro sólo: u společného stolu by ji jeden hráč vnutil ostatním.
+    const speedRow = this.role === 'solo' ? `<span>${cs.game.speed}</span>${speeds}` : '';
     return `
       <section class="panel footer">
         <div class="row between">
-          <div class="row"><span>${cs.game.speed}</span>${speeds}</div>
+          <div class="row">${speedRow}</div>
           <button class="chip" data-action="quit">${cs.game.quit}</button>
         </div>
         <small>${cs.game.hints}</small>
@@ -663,9 +668,22 @@ export class GameScreen {
           ${biggest}
           <h3>${cs.result.standings}</h3>
           <table>${rows}</table>
-          ${button(cs.result.again, 'newGame', '', true)}
+          ${this.renderResultButton()}
         </div>
       </div>`;
+  }
+
+  private renderResultButton(): string {
+    if (this.role === 'guest') {
+      return `<p class="waiting">${cs.mp.waitingHost}</p>${button(cs.mp.leave, 'quit')}`;
+    }
+    return button(this.role === 'host' ? cs.mp.backToLobby : cs.result.again, 'newGame', '', true);
+  }
+
+  private quitConfirmText(): string {
+    if (this.role === 'host') return cs.mp.quitHostConfirm;
+    if (this.role === 'guest') return cs.mp.quitGuestConfirm;
+    return cs.game.quitConfirm;
   }
 
   private onClick(event: MouseEvent): void {
@@ -723,13 +741,13 @@ export class GameScreen {
       case 'speed':
         this.speed = el.dataset.speed as Speed;
         this.view?.setSpeed(this.speed);
-        this.bots.refresh();
+        this.bots?.refresh();
         break;
       case 'resetCamera':
         this.view?.resetCamera();
         return;
       case 'quit':
-        if (this.state.phase === 'gameOver' || window.confirm(cs.game.quitConfirm)) {
+        if (this.state.phase === 'gameOver' || window.confirm(this.quitConfirmText())) {
           this.callbacks.onExit();
         }
         return;
