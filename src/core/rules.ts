@@ -2,6 +2,7 @@ import {
   HOTEL_LEVEL,
   MAX_TRADES_PER_TURN,
   MIN_BID_STEP,
+  MONEY_UNIT,
   MORTGAGE_INTEREST,
   STATION_RENTS,
   UTILITY_RATE_BOTH,
@@ -80,7 +81,7 @@ export function mortgageValue(tile: TileId): number {
 }
 
 export function mortgageInterest(tile: TileId): number {
-  return Math.ceil((mortgageValue(tile) * MORTGAGE_INTEREST) / 1000) * 1000;
+  return Math.ceil((mortgageValue(tile) * MORTGAGE_INTEREST) / MONEY_UNIT) * MONEY_UNIT;
 }
 
 export function unmortgageCost(tile: TileId): number {

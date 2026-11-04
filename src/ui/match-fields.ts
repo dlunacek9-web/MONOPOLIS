@@ -1,5 +1,5 @@
 import { cs, formatMoney } from '../i18n/cs';
-import { START_CASH_CHOICES } from '../net/match';
+import { DEFAULT_MATCH, MODE_MONEY, normalizeMatch } from '../net/match';
 import type { MatchOptions } from '../net/match';
 import { escapeHtml } from './html';
 
@@ -7,8 +7,16 @@ export function option(value: string, label: string, selected: boolean, disabled
   return `<option value="${value}"${selected ? ' selected' : ''}${disabled ? ' disabled' : ''}>${escapeHtml(label)}</option>`;
 }
 
+function startCashOptions(prefs: MatchOptions): string {
+  return MODE_MONEY[prefs.mode].startCashChoices
+    .map((cash) => option(String(cash), formatMoney(cash), prefs.startCash === cash))
+    .join('');
+}
+
 /** Pole nastavení partie společná pro sólo a multiplayer. */
-export function renderMatchFields(prefs: MatchOptions): string {
+export function renderMatchFields(options: MatchOptions): string {
+  const prefs = normalizeMatch(options);
+  const money = MODE_MONEY[prefs.mode];
   return `
     <label>${cs.lobby.difficulty}
       <select name="difficulty">
@@ -19,15 +27,14 @@ export function renderMatchFields(prefs: MatchOptions): string {
     </label>
     <label>${cs.lobby.mode}
       <select name="mode">
-        ${option('classic', cs.lobby.modeClassic, true)}
-        ${option('monopolis', cs.lobby.modeMonopolis, false, true)}
+        ${option('classic', cs.lobby.modeClassic, prefs.mode === 'classic')}
+        ${option('nextlevel', cs.lobby.modeNextLevel, prefs.mode === 'nextlevel')}
       </select>
     </label>
+    <p class="mode-hint" data-mode-hint>${prefs.mode === 'classic' ? cs.lobby.modeHintClassic : cs.lobby.modeHintNextLevel}</p>
     <label>${cs.lobby.startCash}
       <select name="startCash">
-        ${START_CASH_CHOICES.map((cash) =>
-          option(String(cash), formatMoney(cash), prefs.startCash === cash),
-        ).join('')}
+        ${startCashOptions(prefs)}
       </select>
     </label>
     <label>${cs.lobby.win}
@@ -41,7 +48,7 @@ export function renderMatchFields(prefs: MatchOptions): string {
       <input name="rounds" type="number" min="1" max="200" required value="${prefs.rounds}" />
     </label>
     <label data-for="money">${cs.lobby.money}
-      <input name="money" type="number" min="1600000" step="100000" required value="${prefs.money}" />
+      <input name="money" type="number" min="${prefs.startCash + money.step}" step="${money.step}" required value="${prefs.money}" />
     </label>`;
 }
 
@@ -56,19 +63,36 @@ export function wireMatchFields(form: HTMLFormElement): void {
       label.querySelector('input')!.disabled = !visible;
     }
   };
+  // Po přepnutí režimu se částky přepočítají na měřítko nového režimu.
+  const syncMode = () => {
+    const mode = new FormData(form).get('mode') === 'classic' ? 'classic' : 'nextlevel';
+    const defaults = MODE_MONEY[mode];
+    const cash = form.querySelector<HTMLSelectElement>('[name="startCash"]')!;
+    cash.innerHTML = startCashOptions({ ...DEFAULT_MATCH, mode, startCash: defaults.startCash });
+    const money = form.querySelector<HTMLInputElement>('[name="money"]')!;
+    money.min = String(defaults.startCash + defaults.step);
+    money.step = String(defaults.step);
+    money.value = String(defaults.money);
+    form.querySelector('[data-mode-hint]')!.textContent =
+      mode === 'classic' ? cs.lobby.modeHintClassic : cs.lobby.modeHintNextLevel;
+  };
   sync();
-  form.addEventListener('change', sync);
+  form.addEventListener('change', (event) => {
+    if ((event.target as HTMLElement).getAttribute('name') === 'mode') syncMode();
+    sync();
+  });
 }
 
 /** Skrytá pole ve formuláři chybí, proto si nechávají předchozí hodnotu. */
 export function readMatchFields(form: HTMLFormElement, previous: MatchOptions): MatchOptions {
   const data = new FormData(form);
-  return {
+  return normalizeMatch({
+    mode: data.get('mode') === 'classic' ? 'classic' : 'nextlevel',
     seats: Number(data.get('seats') ?? previous.seats),
     difficulty: data.get('difficulty') as MatchOptions['difficulty'],
     win: data.get('win') as MatchOptions['win'],
     rounds: Number(data.get('rounds') ?? previous.rounds),
     money: Number(data.get('money') ?? previous.money),
     startCash: Number(data.get('startCash')),
-  };
+  });
 }

@@ -1,4 +1,4 @@
-import type { Difficulty, GroupId, Personality } from '../core';
+import type { DeckId, Difficulty, GameMode, GroupId, Personality } from '../core';
 
 export function formatMoney(amount: number): string {
   return `${amount.toLocaleString('cs-CZ').replace(/\s/g, '\u00a0')}\u00a0Kč`;
@@ -6,6 +6,7 @@ export function formatMoney(amount: number): string {
 
 /** Krátký zápis pro políčka desky, např. 130 tis. nebo 1,2 mil. */
 export function formatMoneyShort(amount: number): string {
+  if (amount < 10_000) return amount.toLocaleString('cs-CZ').replace(/\s/g, '\u00a0');
   if (amount >= 1_000_000) {
     const millions = (amount / 1_000_000).toLocaleString('cs-CZ', { maximumFractionDigits: 2 });
     return `${millions}\u00a0mil.`;
@@ -67,8 +68,10 @@ export const cs = {
     bots: 'Počet botů',
     difficulty: 'Obtížnost botů',
     mode: 'Režim',
-    modeClassic: 'Klasika',
-    modeMonopolis: 'MONOPOLIS (později)',
+    modeClassic: 'Klasika (věrná kopie originálu)',
+    modeNextLevel: 'Next level (česká satira)',
+    modeHintClassic: 'Původní pravidla, ceny, nájmy i karty. Jen pro výuku.',
+    modeHintNextLevel: 'Naše české město, satirické karty a později byznysová vrstva.',
     win: 'Podmínka výhry',
     winLast: 'Poslední nezbankrotovaný',
     winRounds: 'Nejbohatší po počtu kol',
@@ -370,3 +373,141 @@ export const cs = {
     },
   } satisfies Record<string, Record<Personality, string[]>>,
 };
+
+interface ModeTexts {
+  groups: Record<GroupId, string>;
+  tiles: string[];
+  decks: Record<DeckId, string>;
+  cards: Record<DeckId, string[]>;
+  tile: Pick<typeof cs.tile, 'utilityOne' | 'utilityBoth' | 'footSalary' | 'description'>;
+}
+
+const NEXT_LEVEL_TEXTS: ModeTexts = {
+  groups: cs.groups,
+  tiles: cs.tiles,
+  decks: cs.decks,
+  cards: cs.cards,
+  tile: {
+    utilityOne: cs.tile.utilityOne,
+    utilityBoth: cs.tile.utilityBoth,
+    footSalary: cs.tile.footSalary,
+    description: cs.tile.description,
+  },
+};
+
+/** Klasika: názvy a texty karet podle originální hry. Efekty karet jsou v `src/core/sets/classic.ts`. */
+const CLASSIC_TEXTS: ModeTexts = {
+  groups: {
+    most: 'Hnědá',
+    ostrava: 'Světle modrá',
+    usti: 'Růžová',
+    olomouc: 'Oranžová',
+    plzen: 'Červená',
+    brno: 'Žlutá',
+    vary: 'Zelená',
+    praha: 'Tmavě modrá',
+  },
+  tiles: [
+    'Start',
+    'Středomořská třída',
+    'Pokladna',
+    'Baltská třída',
+    'Daň z příjmů',
+    'Nádraží Reading',
+    'Orientální třída',
+    'Šance',
+    'Vermontská třída',
+    'Connecticutská třída',
+    'Vězení',
+    'Náměstí svatého Karla',
+    'Elektrárna',
+    'Státní třída',
+    'Virginská třída',
+    'Nádraží Pensylvánie',
+    'Náměstí svatého Jakuba',
+    'Pokladna',
+    'Tennesseeská třída',
+    'Newyorská třída',
+    'Parkoviště zdarma',
+    'Kentucká třída',
+    'Šance',
+    'Indianská třída',
+    'Illinoiská třída',
+    'Nádraží B&O',
+    'Atlantická třída',
+    'Ventnorská třída',
+    'Vodárna',
+    'Marvinovy zahrady',
+    'Jdi do vězení',
+    'Pacifická třída',
+    'Třída Severní Karolíny',
+    'Pokladna',
+    'Pensylvánská třída',
+    'Nádraží Short Line',
+    'Šance',
+    'Parkové náměstí',
+    'Daň z luxusu',
+    'Promenáda',
+  ],
+  decks: { tip: 'Šance', urad: 'Pokladna' },
+  cards: {
+    tip: [
+      'Postup na Promenádu.',
+      'Postup na Start. Vyber 200 Kč.',
+      'Postup na Illinoiskou třídu. Pokud projdeš Startem, vyber 200 Kč.',
+      'Postup na Náměstí svatého Karla. Pokud projdeš Startem, vyber 200 Kč.',
+      'Postup na nejbližší nádraží. Pokud je cizí, zaplať majiteli dvojnásobný nájem.',
+      'Postup na nejbližší nádraží. Pokud je cizí, zaplať majiteli dvojnásobný nájem.',
+      'Postup na nejbližší podnik. Pokud je cizí, hoď kostkami a zaplať desetinásobek hodu.',
+      'Banka ti vyplácí dividendu 50 Kč.',
+      'Propustka z vězení. Kartu si můžeš nechat na později.',
+      'Jdi o 3 pole zpět.',
+      'Jdi rovnou do vězení. Neprojdeš Startem a nevybereš 200 Kč.',
+      'Generální oprava: zaplať 25 Kč za každý dům a 100 Kč za každý hotel.',
+      'Pokuta za rychlou jízdu: zaplať 15 Kč.',
+      'Vydej se na Nádraží Reading. Pokud projdeš Startem, vyber 200 Kč.',
+      'Byl jsi zvolen předsedou správní rady. Zaplať každému hráči 50 Kč.',
+      'Stavební spoření ti dozrálo. Vyber 150 Kč.',
+    ],
+    urad: [
+      'Postup na Start. Vyber 200 Kč.',
+      'Chyba banky v tvůj prospěch. Vyber 200 Kč.',
+      'Poplatek lékaři: zaplať 50 Kč.',
+      'Z prodeje akcií získáváš 50 Kč.',
+      'Propustka z vězení. Kartu si můžeš nechat na později.',
+      'Jdi rovnou do vězení. Neprojdeš Startem a nevybereš 200 Kč.',
+      'Vánoční fond ti dozrál. Vyber 100 Kč.',
+      'Vratka daně z příjmů: vyber 20 Kč.',
+      'Máš narozeniny. Každý hráč ti dá 10 Kč.',
+      'Životní pojištění ti dozrálo. Vyber 100 Kč.',
+      'Poplatky za nemocnici: zaplať 100 Kč.',
+      'Školné: zaplať 50 Kč.',
+      'Dostáváš poradenský honorář 25 Kč.',
+      'Opravy ulic: zaplať 40 Kč za každý dům a 115 Kč za každý hotel.',
+      'Vyhrál jsi druhou cenu v soutěži krásy. Vyber 10 Kč.',
+      'Zdědil jsi 100 Kč.',
+    ],
+  },
+  tile: {
+    utilityOne: 'Kostky × 4 Kč',
+    utilityBoth: 'Oba podniky: kostky × 10 Kč',
+    footSalary: '+200',
+    description: {
+      start: 'Při každém průjezdu dostaneš 200 Kč.',
+      card: 'Vytáhneš si kartu a řídíš se jí.',
+      jail: 'Když jsi tu jen na návštěvě, nic se neděje. Kauce je 50 Kč.',
+      parking: 'Odpočinek. Nic se neděje.',
+      goToJail: 'Jdeš rovnou do vězení bez výplaty.',
+    },
+  },
+};
+
+/** Přepne herní texty (názvy polí, karty) na ty, které patří k režimu. */
+export function useTexts(mode: GameMode): void {
+  const pack = mode === 'classic' ? CLASSIC_TEXTS : NEXT_LEVEL_TEXTS;
+  cs.groups = pack.groups;
+  cs.tiles = pack.tiles;
+  cs.decks = pack.decks;
+  cs.cards = pack.cards;
+  cs.tile = { ...cs.tile, ...pack.tile };
+}

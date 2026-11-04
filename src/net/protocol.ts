@@ -3,7 +3,7 @@ import type { Action, GameState, PlayerId, TileId, TradeSide } from '../core';
 import type { MatchOptions } from './match';
 
 /** Zvyš při každé nekompatibilní změně zpráv, ať se nepotkají různé verze hry. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const MAX_NAME_LENGTH = 20;
 
 export type SeatKind = 'host' | 'guest' | 'bot';

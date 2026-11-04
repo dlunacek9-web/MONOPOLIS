@@ -30,7 +30,13 @@ Pořadí fází: 2 → 3 → 4 → 5 a dál. Multiplayer jde před byznysovou vr
 - [x] Boti doplní prázdná místa, člověk může převzít bota
 - [x] Rozšířené nastavení partie
 
-## Fáze 4 — Byznysová vrstva (režim MONOPOLIS)
+## Mezifáze — Dva režimy
+
+- [x] Klasika: věrná kopie originálních pravidel, desky a karet
+- [x] Next level: dosavadní hra
+- [x] Výběr režimu v lobby, sólo i multiplayer
+
+## Fáze 4 — Byznysová vrstva (režim Next level)
 
 - [ ] Černé a bílé peníze
 - [ ] Praní přes podniky

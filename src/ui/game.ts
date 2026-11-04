@@ -3,6 +3,7 @@ import {
   HOTEL_LEVEL,
   JAIL_BAIL,
   MIN_BID_STEP,
+  MONEY_UNIT,
   STATION_RENTS,
   actorOf,
   canBuild,
@@ -31,6 +32,7 @@ import { publishGameEnd, summarizeGame } from '../profile/profile';
 import { CityView } from '../render/city-view';
 import { footText } from '../render/tile-info';
 import { PLAYER_COLORS, renderBoard, shortTileName, tileColor } from './board';
+import { applyMode } from './mode';
 import { escapeHtml } from './html';
 import { formatEvent, quipFor } from './log';
 
@@ -83,6 +85,7 @@ export class GameScreen {
       <div class="ui"></div>`;
     this.ui = this.root.querySelector<HTMLElement>('.ui')!;
     this.tooltip = this.root.querySelector<HTMLElement>('.tile-tooltip')!;
+    applyMode(transport.getState().settings.mode);
     this.view = this.createView(transport.getState());
     // Pořadí je důležité: město se musí překreslit dřív, než si bot spočítá čekání na auto.
     this.unsubscribe = this.transport.subscribe(() => this.render());
@@ -146,7 +149,9 @@ export class GameScreen {
   }
 
   private get state(): GameState {
-    return this.transport.getState();
+    const state = this.transport.getState();
+    applyMode(state.settings.mode);
+    return state;
   }
 
   private send(action: Action): void {
@@ -410,7 +415,7 @@ export class GameScreen {
   private renderAuction(s: GameState): string {
     const cash = s.players[this.me]!.cash;
     const min = minBid(s);
-    const quick = [min, min + 40_000, min + 90_000]
+    const quick = [min, min + 4 * MIN_BID_STEP, min + 9 * MIN_BID_STEP]
       .filter((amount) => amount <= cash)
       .map((amount, i) =>
         button(cs.game.bid(formatMoney(amount)), 'bid', `data-amount="${amount}"`, i === 0),
@@ -615,7 +620,7 @@ export class GameScreen {
         <h4>${side === 'give' ? cs.game.tradeGive : cs.game.tradeGet} (${escapeHtml(p.name)})</h4>
         <div class="trade-tiles">${this.tradeTileChoices(s, owner, side, draft)}</div>
         <label>${cs.game.tradeCash}
-          <input type="number" data-trade-cash="${side}" min="0" max="${p.cash}" step="1000" value="${values.cash}" />
+          <input type="number" data-trade-cash="${side}" min="0" max="${p.cash}" step="${MONEY_UNIT}" value="${values.cash}" />
         </label>
         <label>${cs.game.tradeJailCards}
           <input type="number" data-trade-jail="${side}" min="0" max="${p.jailCards.length}" value="${values.jailCards}" />

@@ -22,11 +22,11 @@ import {
 import { rollDice } from './rng';
 import type { Action, GameState, PlayerId, TileId, WinCondition } from './types';
 
-const CLASSIC = { mode: 'classic', win: { type: 'lastStanding' } } as const;
+const CLASSIC = { mode: 'nextlevel', win: { type: 'lastStanding' } } as const;
 
 function game(players = 2, win: WinCondition = CLASSIC.win): GameState {
   const setups = Array.from({ length: players }, (_, i) => ({ name: `H${i}` }));
-  const s = createGame({ mode: 'classic', win }, setups, 42);
+  const s = createGame({ mode: 'nextlevel', win }, setups, 42);
   s.active = 0;
   s.firstPlayer = 0;
   return s;

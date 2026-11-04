@@ -6,6 +6,7 @@ import {
   MAX_JAIL_ATTEMPTS,
   START_CASH,
   START_SALARY,
+  UTILITY_RATE_BOTH,
   TOTAL_HOTELS,
   TOTAL_HOUSES,
   BOARD,
@@ -14,6 +15,7 @@ import {
   tilesOfKind,
 } from './board';
 import { CARDS, cardEffect } from './cards';
+import { useRuleset } from './ruleset';
 import { randomInt, rollDice, shuffle } from './rng';
 import {
   actorOf,
@@ -66,6 +68,7 @@ export function createGame(
   seed: number,
 ): GameState {
   if (setups.length < 2 || setups.length > 4) throw new Error('Hra je pro 2–4 hráče');
+  useRuleset(settings.mode);
   const deeds: (Deed | null)[] = BOARD.map((_, id) =>
     ownablePrice(id) === null ? null : { owner: null, level: 0, mortgaged: false },
   );
@@ -190,7 +193,7 @@ function landOnOwnable(s: GameState, player: PlayerId, tile: TileId, rule: RentR
   if (rule.kind === 'utilityRoll') {
     const dice = rollDice(s);
     emit(s, { type: 'roll', player, dice });
-    amount = (dice[0] + dice[1]) * 10_000;
+    amount = (dice[0] + dice[1]) * UTILITY_RATE_BOTH;
   } else {
     const dice = s.lastRoll ?? [0, 0];
     amount = rentOf(s, tile, dice[0] + dice[1]);
@@ -698,6 +701,7 @@ function apply(s: GameState, action: Action): void {
 
 /** Čistá funkce: původní stav se nemění. Neplatná akce vyhodí `IllegalActionError`. */
 export function reduce(state: GameState, action: Action): GameState {
+  useRuleset(state.settings.mode);
   const s = structuredClone(state);
   apply(s, action);
   settle(s);

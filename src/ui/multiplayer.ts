@@ -302,6 +302,7 @@ export class MultiplayerScreens {
           <section>
             <h3>${cs.mp.settingsTitle}</h3>
             <ul class="mp-summary">
+              <li>${cs.lobby.mode}: ${options.mode === 'classic' ? cs.lobby.modeClassic : cs.lobby.modeNextLevel}</li>
               <li>${cs.lobby.difficulty}: ${cs.difficulty[options.difficulty] ?? ''}</li>
               <li>${cs.lobby.startCash}: ${formatMoney(options.startCash)}</li>
               <li>${cs.lobby.win}: ${win}</li>
