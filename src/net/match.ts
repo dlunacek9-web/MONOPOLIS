@@ -1,4 +1,5 @@
 import type {
+  Archetype,
   Difficulty,
   GameMode,
   GameSettings,
@@ -18,6 +19,8 @@ export interface MatchOptions {
   rounds: number;
   money: number;
   startCash: number;
+  /** Archetyp prvního člověka u stolu (sólista, hostitel). Ostatní ho dostanou náhodně. */
+  archetype: Archetype | 'random';
 }
 
 /** Částky závisí na režimu: Klasika počítá jako originál, Next level v tisících korun. */
@@ -51,7 +54,10 @@ export function normalizeMatch(options: MatchOptions): MatchOptions {
     options.money >= startCash + money.step && options.money < money.money * 100
       ? options.money
       : money.money;
-  return { ...options, mode, startCash, money: target };
+  const archetype = ARCHETYPES.includes(options.archetype as Archetype)
+    ? options.archetype
+    : 'random';
+  return { ...options, mode, startCash, money: target, archetype };
 }
 
 export const DEFAULT_MATCH: MatchOptions = {
@@ -62,7 +68,10 @@ export const DEFAULT_MATCH: MatchOptions = {
   rounds: 20,
   money: 5_000_000,
   startCash: 1_500_000,
+  archetype: 'random',
 };
+
+export const ARCHETYPES: readonly Archetype[] = ['developer', 'kryptobro', 'baron', 'trafikant'];
 
 const PERSONALITIES: Personality[] = ['zralok', 'lakomec', 'kriminalnik', 'vyvazeny'];
 
@@ -76,6 +85,18 @@ function pickPersonalities(count: number, seed: number): Personality[] {
   for (let i = 0; i < count; i++) {
     result.push(pool.splice(value % pool.length, 1)[0]!);
     value = Math.floor(value / 7) + 13;
+  }
+  return result;
+}
+
+/** Každé místo dostane jiný archetyp. Volbu člověka zachová a zbytek rozdá podle seedu. */
+function pickArchetypes(count: number, chosen: MatchOptions['archetype'], seed: number) {
+  const pool = ARCHETYPES.filter((archetype) => archetype !== chosen);
+  const result: Archetype[] = chosen === 'random' ? [] : [chosen];
+  let value = (seed >>> 0) + 3;
+  while (result.length < count && pool.length > 0) {
+    result.push(pool.splice(value % pool.length, 1)[0]!);
+    value = Math.floor(value / 5) + 11;
   }
   return result;
 }
@@ -99,13 +120,15 @@ export function matchSetups(
   seed: number,
 ): PlayerSetup[] {
   const bots = pickPersonalities(Math.max(0, options.seats - humans.length), seed);
-  return [
-    ...humans.map((name) => ({ name })),
-    ...bots.map((personality) => ({
+  const seats = [
+    ...humans.map((name): PlayerSetup => ({ name })),
+    ...bots.map((personality): PlayerSetup => ({
       name: cs.botNames[personality],
       bot: { personality, difficulty: options.difficulty },
     })),
   ];
+  const archetypes = pickArchetypes(seats.length, options.archetype, seed);
+  return seats.map((seat, i) => ({ ...seat, archetype: archetypes[i] }));
 }
 
 export function randomSeed(): number {

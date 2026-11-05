@@ -1,4 +1,6 @@
 import {
+  BUSINESS,
+  GROUP_ORDER,
   HOTEL_LEVEL,
   MAX_TRADES_PER_TURN,
   MIN_BID_STEP,
@@ -88,6 +90,26 @@ export function unmortgageCost(tile: TileId): number {
   return mortgageValue(tile) + mortgageInterest(tile);
 }
 
+/** Cena domu pro konkrétního hráče. Developer staví levněji. */
+export function buildCost(s: GameState, player: PlayerId, tile: TileId): number {
+  const t = tileAt(tile);
+  if (t.kind !== 'property') return 0;
+  const archetype = playerOf(s, player).archetype;
+  const discount = (archetype && BUSINESS?.perks[archetype].buildDiscountPct) || 0;
+  return Math.ceil((t.houseCost * (100 - discount)) / 100 / MONEY_UNIT) * MONEY_UNIT;
+}
+
+/** Tržní hodnota všech akcií hráče. */
+export function sharesValue(s: GameState, player: PlayerId): number {
+  const { market } = s;
+  if (!market) return 0;
+  const p = playerOf(s, player);
+  return GROUP_ORDER.reduce(
+    (sum, group) => sum + (p.shares[group]?.count ?? 0) * market.prices[group],
+    0,
+  );
+}
+
 export function canBuild(s: GameState, player: PlayerId, tile: TileId): boolean {
   if (!canManage(s, player) || s.debts.length > 0) return false;
   const t = tileAt(tile);
@@ -96,7 +118,7 @@ export function canBuild(s: GameState, player: PlayerId, tile: TileId): boolean 
   if (group.some((deed) => deed.mortgaged)) return false;
   const level = deedOf(s, tile).level;
   if (level >= HOTEL_LEVEL || level > Math.min(...group.map((deed) => deed.level))) return false;
-  if (playerOf(s, player).cash < t.houseCost) return false;
+  if (playerOf(s, player).cash < buildCost(s, player, tile)) return false;
   return level === HOTEL_LEVEL - 1 ? s.hotelsLeft > 0 : s.housesLeft > 0;
 }
 
@@ -164,11 +186,12 @@ export function canProposeTrade(s: GameState, player: PlayerId): boolean {
   return canManage(s, player) && s.tradesThisTurn < MAX_TRADES_PER_TURN;
 }
 
-/** Hotovost + hodnota pozemků a budov. */
+/** Hotovost, akcie, černé po srážce a hodnota pozemků a budov. */
 export function netWorth(s: GameState, player: PlayerId): number {
   const p = playerOf(s, player);
   if (p.bankrupt) return 0;
-  let total = p.cash;
+  const dirtyPct = BUSINESS?.dirtyWorthPct ?? 0;
+  let total = p.cash + sharesValue(s, player) + Math.floor((p.dirty * dirtyPct) / 100);
   for (const tile of tilesOwnedBy(s, player)) {
     const deed = deedOf(s, tile);
     total += deed.mortgaged ? mortgageValue(tile) : (ownablePrice(tile) ?? 0);
@@ -178,9 +201,9 @@ export function netWorth(s: GameState, player: PlayerId): number {
   return total;
 }
 
-/** Kolik by hráč maximálně získal prodejem budov a zastavením všeho. */
+/** Kolik by hráč maximálně získal prodejem akcií a budov a zastavením všeho. */
 export function liquidationValue(s: GameState, player: PlayerId): number {
-  let total = playerOf(s, player).cash;
+  let total = playerOf(s, player).cash + sharesValue(s, player);
   for (const tile of tilesOwnedBy(s, player)) {
     const deed = deedOf(s, tile);
     if (!deed.mortgaged) total += mortgageValue(tile);

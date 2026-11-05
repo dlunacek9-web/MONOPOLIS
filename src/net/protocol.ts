@@ -1,9 +1,9 @@
-import { BOARD } from '../core';
-import type { Action, GameState, PlayerId, TileId, TradeSide } from '../core';
+import { BOARD, GROUP_ORDER } from '../core';
+import type { Action, GameState, GroupId, PlayerId, TileId, TradeSide } from '../core';
 import type { MatchOptions } from './match';
 
 /** Zvyš při každé nekompatibilní změně zpráv, ať se nepotkají různé verze hry. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const MAX_NAME_LENGTH = 20;
 
 export type SeatKind = 'host' | 'guest' | 'bot';
@@ -43,6 +43,10 @@ function isTile(value: unknown): value is TileId {
   return isCount(value) && value < BOARD.length;
 }
 
+function isGroup(value: unknown): value is GroupId {
+  return GROUP_ORDER.includes(value as GroupId);
+}
+
 function parseSide(value: unknown): TradeSide | null {
   if (!isRecord(value)) return null;
   const { tiles, cash, jailCards } = value;
@@ -72,6 +76,9 @@ function parseAction(value: unknown): Action | null {
     case 'settleDebt':
     case 'declareBankruptcy':
     case 'endTurn':
+    case 'payTax':
+    case 'bribeOfficial':
+    case 'bribePolice':
       return { type: value.type, player };
     case 'bid':
       return isCount(value.amount) ? { type: 'bid', player, amount: value.amount } : null;
@@ -79,7 +86,23 @@ function parseAction(value: unknown): Action | null {
     case 'sellBuilding':
     case 'mortgage':
     case 'unmortgage':
+    case 'bribeBuild':
       return isTile(value.tile) ? { type: value.type, player, tile: value.tile } : null;
+    case 'setOffBooks':
+      return isTile(value.tile) && typeof value.on === 'boolean'
+        ? { type: 'setOffBooks', player, tile: value.tile, on: value.on }
+        : null;
+    case 'launder':
+      return isTile(value.tile) && isCount(value.amount)
+        ? { type: 'launder', player, tile: value.tile, amount: value.amount }
+        : null;
+    case 'buyShares':
+    case 'sellShares':
+      return isGroup(value.group) && isCount(value.count)
+        ? { type: value.type, player, group: value.group, count: value.count }
+        : null;
+    case 'pumpDump':
+      return isGroup(value.group) ? { type: 'pumpDump', player, group: value.group } : null;
     case 'proposeTrade': {
       if (!isRecord(value.offer) || !isCount(value.offer.to)) return null;
       const give = parseSide(value.offer.give);

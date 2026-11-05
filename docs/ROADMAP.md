@@ -39,13 +39,12 @@ Pořadí fází: 2 → 3 → 4 → 5 a dál. Multiplayer jde před byznysovou vr
 
 ## Fáze 4 — Byznysová vrstva (režim Next level)
 
-- [ ] Černé a bílé peníze
-- [ ] Praní přes podniky
-- [ ] Korupce a úplatky
-- [ ] Burza a pump & dump
-- [ ] Vězení a pokuty za odhalení
-- [ ] Archetypy podnikatelů s pasivními schopnostmi (přesunuto z Fáze 2, stojí na burze, úplatcích a praní)
-- [ ] Doladění satirických karet a textů
+- [x] Černé a bílé peníze
+- [x] Praní přes podniky
+- [x] Korupce a úplatky
+- [x] Burza a pump & dump
+- [x] Vězení a pokuty za odhalení
+- [x] Archetypy podnikatelů s pasivními schopnostmi
 
 ## Fáze 5 — Framework miniher a honička autem
 
@@ -68,3 +67,4 @@ Pořadí fází: 2 → 3 → 4 → 5 a dál. Multiplayer jde před byznysovou vr
 - [ ] Zvuky, hudba, efekty
 - [ ] Hlavní menu a tutoriál
 - [ ] Vyvážení ekonomiky
+- [ ] Doladění satirických karet a textů (přesunuto z Fáze 4, až budou hotové minihry)

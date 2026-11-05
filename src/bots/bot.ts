@@ -1,22 +1,40 @@
 import {
+  BUSINESS,
+  GROUP_ORDER,
   JAIL_BAIL,
   MIN_BID_STEP,
   MONEY_UNIT,
   actorOf,
+  bribeCost,
+  buildCost,
+  canBribeBuild,
+  canBribeOfficial,
+  canBribePolice,
   canBuild,
+  canBuyShares,
+  canLaunder,
   canMortgage,
   canProposeTrade,
+  canPumpDump,
   canSellBuilding,
+  canSellShares,
+  canSetOffBooks,
   canUnmortgage,
   deedOf,
   groupTiles,
   hasBuildingsInGroup,
   hashToUnit,
+  holdingOf,
   isValidTrade,
+  launderFine,
+  launderLimit,
   liquidationValue,
   minBid,
   ownablePrice,
+  ownsWholeGroup,
   playerOf,
+  pumpOn,
+  sharePrice,
   tileAt,
   tilesOfKind,
   tilesOwnedBy,
@@ -36,14 +54,34 @@ interface Traits {
   buildReserve: number;
   auctionFactor: number;
   acceptMargin: number;
+  /** Ochota riskovat 0–1: nájem na ruku, úplatky, pump & dump. */
+  crime: number;
 }
 
 /** Rezervy jsou v jednotkách `MONEY_UNIT` (Next level: tisíce Kč, Klasika: Kč). */
 const TRAIT_TABLE: Record<Personality, Traits> = {
-  zralok: { buyReserve: 30, buildReserve: 120, auctionFactor: 1.35, acceptMargin: 1.2 },
-  lakomec: { buyReserve: 300, buildReserve: 600, auctionFactor: 0.75, acceptMargin: 1.0 },
-  kriminalnik: { buyReserve: 0, buildReserve: 40, auctionFactor: 1.2, acceptMargin: 1.1 },
-  vyvazeny: { buyReserve: 120, buildReserve: 220, auctionFactor: 1.0, acceptMargin: 1.1 },
+  zralok: { buyReserve: 30, buildReserve: 120, auctionFactor: 1.35, acceptMargin: 1.2, crime: 0.6 },
+  lakomec: {
+    buyReserve: 300,
+    buildReserve: 600,
+    auctionFactor: 0.75,
+    acceptMargin: 1.0,
+    crime: 0.15,
+  },
+  kriminalnik: {
+    buyReserve: 0,
+    buildReserve: 40,
+    auctionFactor: 1.2,
+    acceptMargin: 1.1,
+    crime: 0.9,
+  },
+  vyvazeny: {
+    buyReserve: 120,
+    buildReserve: 220,
+    auctionFactor: 1.0,
+    acceptMargin: 1.1,
+    crime: 0.35,
+  },
 };
 
 function traitsOf(personality: Personality): Traits {
@@ -129,6 +167,12 @@ export function acceptsTrade(s: GameState, me: PlayerId, offer: TradeOffer): boo
 
 function raiseCash(s: GameState, me: PlayerId, amount: number): Action {
   if (liquidationValue(s, me) < amount) return { type: 'declareBankruptcy', player: me };
+  for (const group of GROUP_ORDER) {
+    const { count } = holdingOf(s, me, group);
+    if (canSellShares(s, me, group, count)) {
+      return { type: 'sellShares', player: me, group, count };
+    }
+  }
   const owned = tilesOwnedBy(s, me);
   const byPrice = (a: TileId, b: TileId) => (ownablePrice(a) ?? 0) - (ownablePrice(b) ?? 0);
   const cheapFirst = [...owned].sort(byPrice);
@@ -169,7 +213,7 @@ function manage(s: GameState, me: PlayerId): Action | null {
     .filter((tile) => canBuild(s, me, tile))
     .filter((tile) => {
       const t = tileAt(tile);
-      return t.kind === 'property' && p.cash - t.houseCost >= traits.buildReserve;
+      return t.kind === 'property' && p.cash - buildCost(s, me, tile) >= traits.buildReserve;
     })
     .sort(
       // Nejdřív dotáhnout rozestavěné město: hotely vrací domy do banky a brání jejich nedostatku.
@@ -230,6 +274,120 @@ function proposeTrade(s: GameState, me: PlayerId): Action | null {
   return null;
 }
 
+/** Salt odděluje jednotlivá rozhodnutí v jednom tahu, ať nejsou všechna stejná. */
+function dares(s: GameState, me: PlayerId, salt: number, chance: number): boolean {
+  return hashToUnit(s.turn, me, salt) < chance;
+}
+
+/** Prodej: pumpa je signál utéct, jinak bot bere zisk od 25 %. */
+function chooseSale(s: GameState, me: PlayerId): Action | null {
+  for (const group of GROUP_ORDER) {
+    const { count, cost } = holdingOf(s, me, group);
+    if (count === 0) continue;
+    const profitable = count * sharePrice(s, group) >= cost * 1.25;
+    if ((pumpOn(s, group) || profitable) && canSellShares(s, me, group, count)) {
+      return { type: 'sellShares', player: me, group, count };
+    }
+  }
+  return null;
+}
+
+/** Bot sází na firmy z měst, která má někdo celá: tam se bude stavět a cena poroste. */
+function chooseInvestment(s: GameState, me: PlayerId): Action | null {
+  const { traits } = botOf(s, me);
+  if (!dares(s, me, 1, 0.2 + traits.crime / 2)) return null;
+  const spare = playerOf(s, me).cash - traits.buildReserve - 300 * MONEY_UNIT;
+  for (const group of GROUP_ORDER) {
+    const tile = groupTiles(group)[0]!;
+    const owner = deedOf(s, tile).owner;
+    if (owner === null || !ownsWholeGroup(s, owner, tile) || pumpOn(s, group)) continue;
+    if (holdingOf(s, me, group).count > 0) continue;
+    const count = 10;
+    if (spare >= count * sharePrice(s, group) && canBuyShares(s, me, group, count)) {
+      return { type: 'buyShares', player: me, group, count };
+    }
+  }
+  return null;
+}
+
+function chooseLaundering(s: GameState, me: PlayerId): Action | null {
+  const amount = launderLimit(s, me);
+  const p = playerOf(s, me);
+  // Pokutu musí unést, jinak by jedno odhalení znamenalo bankrot.
+  if (amount < 20 * MONEY_UNIT || p.cash < launderFine(amount)) return null;
+  for (const tile of tilesOwnedBy(s, me)) {
+    if (canLaunder(s, me, tile, amount) && dares(s, me, 100 + tile, 0.6)) {
+      return { type: 'launder', player: me, tile, amount };
+    }
+  }
+  return null;
+}
+
+function choosePump(s: GameState, me: PlayerId): Action | null {
+  if (!BUSINESS || botOf(s, me).traits.crime < 0.5) return null;
+  if (playerOf(s, me).cash < BUSINESS.pump.fine * 1.5 || !dares(s, me, 2, 0.3)) return null;
+  for (const group of GROUP_ORDER) {
+    if (holdingOf(s, me, group).count >= 10 && canPumpDump(s, me, group)) {
+      return { type: 'pumpDump', player: me, group };
+    }
+  }
+  return null;
+}
+
+function chooseBribeBuild(s: GameState, me: PlayerId): Action | null {
+  if (!BUSINESS || botOf(s, me).traits.crime < 0.5 || !dares(s, me, 3, 0.3)) return null;
+  const rules = BUSINESS.build;
+  const needed = rules.cost + rules.fine + botOf(s, me).traits.buildReserve;
+  for (const tile of tilesOwnedBy(s, me)) {
+    if (!canBribeBuild(s, me, tile)) continue;
+    if (playerOf(s, me).cash - buildCost(s, me, tile) >= needed) {
+      return { type: 'bribeBuild', player: me, tile };
+    }
+  }
+  return null;
+}
+
+/** Byznysová vrstva. Každá větev se v jednom tahu vyčerpá, takže bot nikdy neuvízne ve smyčce. */
+function chooseBusiness(s: GameState, me: PlayerId): Action | null {
+  if (!BUSINESS || !s.market) return null;
+  const sale = chooseSale(s, me);
+  if (sale) return sale;
+  const { traits } = botOf(s, me);
+  for (const tile of tilesOwnedBy(s, me)) {
+    const wanted = hashToUnit(tile, me, 7) < traits.crime;
+    if (deedOf(s, tile).offBooks !== wanted && canSetOffBooks(s, me, tile)) {
+      return { type: 'setOffBooks', player: me, tile, on: wanted };
+    }
+  }
+  return (
+    chooseLaundering(s, me) ??
+    choosePump(s, me) ??
+    chooseBribeBuild(s, me) ??
+    chooseInvestment(s, me)
+  );
+}
+
+function chooseTax(s: GameState, me: PlayerId): Action {
+  const tax = s.pendingTax;
+  if (BUSINESS && tax && canBribeOfficial(s, me)) {
+    const rules = BUSINESS.official;
+    const safe = playerOf(s, me).cash >= tax.amount + rules.fine;
+    if (safe && dares(s, me, 4, botOf(s, me).traits.crime)) {
+      return { type: 'bribeOfficial', player: me };
+    }
+  }
+  return { type: 'payTax', player: me };
+}
+
+function choosePoliceBribe(s: GameState, me: PlayerId): Action | null {
+  if (!BUSINESS || !canBribePolice(s, me)) return null;
+  const rules = BUSINESS.police;
+  const safe = playerOf(s, me).cash >= rules.fine + bribeCost(s, me, rules);
+  return safe && dares(s, me, 5, botOf(s, me).traits.crime)
+    ? { type: 'bribePolice', player: me }
+    : null;
+}
+
 function wantsOutOfJail(s: GameState): boolean {
   const unowned = s.deeds.filter((deed) => deed && deed.owner === null).length;
   const buildings = s.deeds.some((deed) => deed && deed.level > 0);
@@ -242,8 +400,12 @@ function chooseRollPhase(s: GameState, me: PlayerId): Action {
   if (managed) return managed;
   const trade = proposeTrade(s, me);
   if (trade) return trade;
+  const business = chooseBusiness(s, me);
+  if (business) return business;
   if (p.inJail && wantsOutOfJail(s)) {
     if (p.jailCards.length > 0) return { type: 'useJailCard', player: me };
+    const bribe = choosePoliceBribe(s, me);
+    if (bribe) return bribe;
     if (p.cash >= JAIL_BAIL + botOf(s, me).traits.buyReserve) {
       return { type: 'payBail', player: me };
     }
@@ -278,6 +440,7 @@ export function chooseBotAction(s: GameState, me: PlayerId): Action {
   }
   if (s.auction) return chooseBid(s, me);
   if (s.phase === 'awaitBuy') return chooseBuy(s, me);
+  if (s.phase === 'awaitTax') return chooseTax(s, me);
   if (s.phase === 'awaitRoll') return chooseRollPhase(s, me);
-  return manage(s, me) ?? { type: 'endTurn', player: me };
+  return manage(s, me) ?? chooseBusiness(s, me) ?? { type: 'endTurn', player: me };
 }

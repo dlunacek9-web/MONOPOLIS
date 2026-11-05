@@ -104,6 +104,7 @@ describe('tah a pohyb', () => {
   it('po dublu hraje stejný hráč a po normálním hodu další', () => {
     let s = game();
     s = rollTo(s, 2, 2); // pole 4, daň
+    s = reduce(s, { type: 'payTax', player: 0 });
     s = reduce(s, { type: 'endTurn', player: 0 });
     expect(s.active).toBe(0);
     expect(s.phase).toBe('awaitRoll');
@@ -325,7 +326,9 @@ describe('karty', () => {
     deck(s, 'tip', 8);
     const next = drawAt(s, 0, 3, 4);
     expect(next.players[0]!.position).toBe(4);
-    expect(next.players[0]!.cash).toBe(START_CASH - 200_000);
+    expect(next.phase).toBe('awaitTax');
+    const paid = reduce(next, { type: 'payTax', player: 0 });
+    expect(paid.players[0]!.cash).toBe(START_CASH - 200_000);
     const jail = game();
     deck(jail, 'tip', 9);
     expect(drawAt(jail, 0, 3, 4).players[0]!.inJail).toBe(true);
@@ -399,6 +402,7 @@ describe('dluh a bankrot', () => {
     deedOf(s, 1).mortgaged = true;
     s.players[0]!.position = 1;
     let next = rollTo(s, 1, 2); // daň na poli 4
+    next = reduce(next, { type: 'payTax', player: 0 });
     expect(next.debts[0]!.creditor).toBeNull();
     next = reduce(next, { type: 'declareBankruptcy', player: 0 });
     expect(next.auction?.tile).toBe(1);
