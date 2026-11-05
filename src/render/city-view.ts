@@ -25,11 +25,16 @@ import { TileVisual } from './tiles';
 import type { Highlight } from './tiles';
 import { buildWorld } from './world';
 
-export type AnimationSpeed = 'normal' | 'fast' | 'turbo';
+export type AnimationSpeed = 'slow' | 'normal' | 'fast' | 'turbo';
 
-const STEP_MS: Record<AnimationSpeed, number> = { normal: 170, fast: 45, turbo: 0 };
-const HOP_MS: Record<AnimationSpeed, number> = { normal: 720, fast: 180, turbo: 0 };
-const MAX_DRIVE_MS = 2600;
+const STEP_MS: Record<AnimationSpeed, number> = { slow: 320, normal: 170, fast: 45, turbo: 0 };
+const HOP_MS: Record<AnimationSpeed, number> = { slow: 1300, normal: 720, fast: 180, turbo: 0 };
+const MAX_DRIVE_MS: Record<AnimationSpeed, number> = {
+  slow: 5500,
+  normal: 2600,
+  fast: 2600,
+  turbo: 2600,
+};
 const HOP_HEIGHT = 5;
 const CAR_Y = 0.14;
 const FOLLOW_ZOOM = 0.5;
@@ -316,7 +321,7 @@ export class CityView {
     if (car.jailed) this.hopOutOfJail(player);
     const path = drivePath(car.tile, tile);
     if (path.length === 0) return;
-    const stepMs = Math.min(STEP_MS[this.speed], MAX_DRIVE_MS / path.length);
+    const stepMs = Math.min(STEP_MS[this.speed], MAX_DRIVE_MS[this.speed] / path.length);
     let from = car.point;
     let start = this.nextStart();
     for (const step of path) {

@@ -366,6 +366,7 @@ export const cs = {
     isBankrupt: 'bankrot',
     youBankrupt: 'Zbankrotoval jsi. Dohraje se to bez tebe.',
     speed: 'Tempo',
+    speedSlow: 'Pomalá',
     speedNormal: 'Normální',
     speedFast: 'Rychlá',
     speedTurbo: 'Turbo',
@@ -375,7 +376,7 @@ export const cs = {
     log: 'Co se stalo',
     you: 'ty',
     hints:
-      'Klik na políčko: detail. Zlatý rámeček: můžeš stavět. Myš: otáčení a zoom. Mezerník: hlavní volba nebo přeskočení scény.',
+      'Klik na políčko: detail. Zlatý rámeček: můžeš stavět. Myš: otáčení a zoom. Mezerník: hlavní volba nebo potvrzení scény.',
     resetCamera: 'Vycentrovat',
     yourTurn: 'JSI NA ŘADĚ',
     onTurn: (name: string) => `Hraje ${name}`,
@@ -384,6 +385,9 @@ export const cs = {
     ownedBy: (name: string) => `Patří: ${name}`,
     history: 'Historie',
     skip: 'Mezerník nebo klik: přeskočit',
+    continue: 'Pokračovat',
+    continueKey: 'mezerník',
+    waitingClick: (name: string) => `Čeká se, až to odklikne ${name}…`,
     riskTip: (pct: number) => `Riziko odhalení: ${pct} %`,
     prompt: {
       roll: 'Jsi na řadě. Hoď a uvidíme.',

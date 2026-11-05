@@ -452,4 +452,39 @@ describe('zprávy honičky', () => {
     });
     expect(parse({ type: 'chaseResult', player: 1, escaped: 'ano' })).toBeNull();
   });
+
+  describe('odklikávání scén', () => {
+    it('kliknutí hosta dojde hostiteli i ostatním hostům, s jeho místem u stolu', () => {
+      const network = new FakeNetwork();
+      const host = setupHost(network);
+      const anna = joinGuest(network, 'anna');
+      const ben = joinGuest(network, 'ben');
+      const transport = host.startGame(1);
+      const atHost: number[][] = [];
+      const atBen: number[][] = [];
+      transport.onAcknowledge((player, seq) => atHost.push([player, seq]));
+      ben.onAcknowledge((player, seq) => atBen.push([player, seq]));
+      // Odesílatel svoje místo nepíše, nejde se tak vydávat za jiného hráče.
+      anna.acknowledge(3, 42);
+      expect(atHost).toEqual([[1, 42]]);
+      expect(atBen).toEqual([[1, 42]]);
+    });
+
+    it('kliknutí hostitele dojde hostům', () => {
+      const network = new FakeNetwork();
+      const host = setupHost(network);
+      const anna = joinGuest(network, 'anna');
+      const transport = host.startGame(1);
+      const seen: number[][] = [];
+      anna.onAcknowledge((player, seq) => seen.push([player, seq]));
+      transport.acknowledge(HOST_SEAT, 7);
+      expect(seen).toEqual([[HOST_SEAT, 7]]);
+    });
+
+    it('rozbité odkliknutí hostitel zahodí', () => {
+      expect(parseGuestMessage({ type: 'ack', seq: -1 })).toBeNull();
+      expect(parseGuestMessage({ type: 'ack', seq: 'x' })).toBeNull();
+      expect(parseGuestMessage({ type: 'ack', seq: 5 })).toEqual({ type: 'ack', seq: 5 });
+    });
+  });
 });

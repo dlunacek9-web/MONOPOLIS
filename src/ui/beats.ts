@@ -5,6 +5,7 @@ import type {
   DeckId,
   GameEvent,
   GameState,
+  Player,
   PlayerId,
   TileId,
 } from '../core';
@@ -21,6 +22,8 @@ interface BeatBase {
   /** Řádek do historie. Prázdný se nezapisuje. */
   text: string;
   player: PlayerId | null;
+  /** Scénu neodklikává nikdo, ani její majitel: ten má místo ní minihru. */
+  timed?: boolean;
 }
 
 export type Beat = BeatBase &
@@ -43,6 +46,28 @@ export type Beat = BeatBase &
     | { kind: 'banner'; ms: number; tone: 'neutral' | 'good' | 'bad' }
     | { kind: 'toast'; amount: number | null; quip: boolean }
   );
+
+export type BeatWait =
+  /** Vlastní scéna: zůstane, dokud ji hráč neodklikne. */
+  | { kind: 'mine' }
+  /** Scéna jiného člověka: zůstane, dokud ji odklikne on. */
+  | { kind: 'other'; player: PlayerId }
+  /** Bot, nebo scéna bez majitele: běží podle tempa. */
+  | { kind: 'timed' };
+
+/** Podle koho se řídí délka scény. Kostky, auto a pruh tahu běží vždy samy. */
+export function beatWait(beat: Beat, me: PlayerId, players: readonly Player[]): BeatWait {
+  const clickable =
+    beat.kind === 'card' ||
+    beat.kind === 'scene' ||
+    beat.kind === 'stamp' ||
+    beat.kind === 'banner';
+  if (!clickable || beat.timed || beat.player === null) return { kind: 'timed' };
+  if (beat.player === me) return { kind: 'mine' };
+  return players[beat.player]?.bot === null
+    ? { kind: 'other', player: beat.player }
+    : { kind: 'timed' };
+}
 
 const MS = {
   turn: 850,
@@ -300,8 +325,11 @@ export function beatsFor(s: GameState, events: readonly GameEvent[], me: PlayerI
       case 'chaseStart':
         beats.push(
           e.player === me
-            ? banner('bad', MS.turn)
-            : scene('police', 'cop', [pick(cs.scene.chase, e.seq)], null, 'siren'),
+            ? toast()
+            : {
+                ...scene('police', 'cop', [pick(cs.scene.chase, e.seq)], null, 'siren'),
+                timed: true,
+              },
         );
         break;
       case 'chaseEnd':
@@ -309,16 +337,16 @@ export function beatsFor(s: GameState, events: readonly GameEvent[], me: PlayerI
         beats.push(
           e.player === me
             ? toast()
-            : scene(
-                'police',
-                'cop',
-                [e.escaped ? cs.scene.chaseEscaped : cs.scene.chaseCaught],
-                {
-                  text: e.escaped ? cs.stamp.escaped : cs.stamp.arrested,
-                  good: e.escaped,
-                },
-                'siren',
-              ),
+            : {
+                ...scene(
+                  'police',
+                  'cop',
+                  [e.escaped ? cs.scene.chaseEscaped : cs.scene.chaseCaught],
+                  { text: e.escaped ? cs.stamp.escaped : cs.stamp.arrested, good: e.escaped },
+                  'siren',
+                ),
+                timed: true,
+              },
         );
         break;
       case 'breakoutStart':

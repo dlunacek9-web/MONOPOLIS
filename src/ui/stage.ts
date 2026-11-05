@@ -98,6 +98,17 @@ function sceneProp(prop: string | null): string {
   }
 }
 
+export type StageFooter = { kind: 'skip' } | { kind: 'click' } | { kind: 'waiting'; name: string };
+
+function footerHtml(footer: StageFooter): string {
+  if (footer.kind === 'click') {
+    return `<button class="btn primary dismiss" data-action="skipBeat">${cs.game.continue}<small>${cs.game.continueKey}</small></button>`;
+  }
+  const text =
+    footer.kind === 'waiting' ? cs.game.waitingClick(escapeHtml(footer.name)) : cs.game.skip;
+  return `<small class="skip-hint">${text}</small>`;
+}
+
 /** Vrstva nad hrou, kterou překreslování rozhraní neruší: scény, kostky a oznámení. */
 export class Stage {
   private readonly scene: HTMLElement;
@@ -113,8 +124,8 @@ export class Stage {
     this.scene.innerHTML = '';
   }
 
-  /** `ms` je skutečná délka scény po přepočtu na tempo. */
-  show(beat: Beat, ms: number, skippable: boolean): void {
+  /** `ms` je délka animace po přepočtu na tempo. `footer` je text nebo tlačítko pod scénou. */
+  show(beat: Beat, ms: number, footer: StageFooter = { kind: 'skip' }): void {
     if (beat.kind === 'note') return;
     if (beat.kind === 'toast') {
       if (ms >= 0) this.toast(beat);
@@ -124,7 +135,7 @@ export class Stage {
       this.clear();
       return;
     }
-    const hint = skippable ? `<small class="skip-hint">${cs.game.skip}</small>` : '';
+    const hint = footerHtml(footer);
     switch (beat.kind) {
       case 'turn':
         this.scene.innerHTML = `
@@ -182,6 +193,7 @@ export class Stage {
               <p>${escapeHtml(beat.text)}</p>
               <div class="stamp good" style="--d:${Math.round(ms * 0.2)}ms">${beat.stamp}</div>
             </div>
+            ${hint}
           </div>`;
         return;
       }
@@ -189,6 +201,7 @@ export class Stage {
         this.scene.innerHTML = `
           <div class="scene-wrap light" data-action="skipBeat">
             <div class="banner tone-${beat.tone}" style="--c:${this.color(beat.player)}">${escapeHtml(beat.text)}</div>
+            ${hint}
           </div>`;
         return;
     }

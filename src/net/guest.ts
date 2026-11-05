@@ -23,6 +23,7 @@ export class GuestSession implements GameTransport {
   private statusValue: GuestStatus = { kind: 'connecting' };
   private statusListener: ((status: GuestStatus) => void) | null = null;
   private readonly listeners = new Set<(state: GameState) => void>();
+  private readonly ackListeners = new Set<(player: PlayerId, seq: number) => void>();
   private timeout: ReturnType<typeof setTimeout> | null;
 
   constructor(
@@ -63,6 +64,15 @@ export class GuestSession implements GameTransport {
   subscribe(listener: (state: GameState) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  acknowledge(_player: PlayerId, seq: number): void {
+    this.sendToHost({ type: 'ack', seq });
+  }
+
+  onAcknowledge(listener: (player: PlayerId, seq: number) => void): () => void {
+    this.ackListeners.add(listener);
+    return () => this.ackListeners.delete(listener);
   }
 
   claim(player: PlayerId): void {
@@ -133,6 +143,9 @@ export class GuestSession implements GameTransport {
         for (const listener of this.listeners) listener(message.state);
         break;
       }
+      case 'ack':
+        for (const listener of this.ackListeners) listener(message.player, message.seq);
+        break;
       case 'rejected':
         this.end(message.reason);
         break;
