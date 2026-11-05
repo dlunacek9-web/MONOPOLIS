@@ -98,6 +98,17 @@ function sceneProp(prop: string | null): string {
   }
 }
 
+export type StageFooter = { kind: 'skip' } | { kind: 'click' } | { kind: 'waiting'; name: string };
+
+function footerHtml(footer: StageFooter): string {
+  if (footer.kind === 'click') {
+    return `<button class="btn primary dismiss" data-action="skipBeat">${cs.game.continue}<small>${cs.game.continueKey}</small></button>`;
+  }
+  const text =
+    footer.kind === 'waiting' ? cs.game.waitingClick(escapeHtml(footer.name)) : cs.game.skip;
+  return `<small class="skip-hint">${text}</small>`;
+}
+
 /** Vrstva nad hrou, kterou překreslování rozhraní neruší: scény, kostky a oznámení. */
 export class Stage {
   private readonly scene: HTMLElement;
@@ -113,8 +124,8 @@ export class Stage {
     this.scene.innerHTML = '';
   }
 
-  /** `ms` je délka animace po přepočtu na tempo. `waits`: scéna zůstane, dokud ji hráč neodklikne. */
-  show(beat: Beat, ms: number, waits: boolean): void {
+  /** `ms` je délka animace po přepočtu na tempo. `footer` je text nebo tlačítko pod scénou. */
+  show(beat: Beat, ms: number, footer: StageFooter = { kind: 'skip' }): void {
     if (beat.kind === 'note') return;
     if (beat.kind === 'toast') {
       if (ms >= 0) this.toast(beat);
@@ -124,9 +135,7 @@ export class Stage {
       this.clear();
       return;
     }
-    const hint = waits
-      ? `<button class="btn primary dismiss" data-action="skipBeat">${cs.game.continue}<small>${cs.game.continueKey}</small></button>`
-      : `<small class="skip-hint">${cs.game.skip}</small>`;
+    const hint = footerHtml(footer);
     switch (beat.kind) {
       case 'turn':
         this.scene.innerHTML = `

@@ -42,8 +42,8 @@ import type { Minigame } from '../minigames/types';
 import { CityView } from '../render/city-view';
 import { footText } from '../render/tile-info';
 import { renderBackroom } from './backroom';
-import { beatsFor, waitsForClick } from './beats';
-import type { Beat } from './beats';
+import { beatWait, beatsFor } from './beats';
+import type { Beat, BeatWait } from './beats';
 import { PLAYER_COLORS, renderBoard, shortTileName, tileColor } from './board';
 import { act } from './buttons';
 import { character } from './characters';
@@ -55,6 +55,7 @@ import { icon } from './icons';
 import { formatEvent } from './log';
 import { PriceHistory, renderMarket } from './market';
 import { Stage, dieFace } from './stage';
+import type { StageFooter } from './stage';
 
 interface TradeDraft {
   to: PlayerId;
@@ -73,6 +74,10 @@ const SPEED_MS: Record<Speed, number> = { slow: 1600, normal: 700, fast: 150, tu
 const SPEED_FACTOR: Record<Speed, number> = { slow: 1.8, normal: 1, fast: 0.45, turbo: 0 };
 /** Tak dlouho po začátku scény se klik ignoruje, ať ji hráč neodklikne omylem naslepo. */
 const DISMISS_GUARD_MS = 300;
+/** Pojistka, když odkliknutí jiného hráče nedorazí: výpadek sítě, jiná záložka. */
+const OTHER_CLICK_LIMIT_MS = 30_000;
+/** Scéna, kterou hráč odklikl dřív, než jsme se k ní dostali, se jen krátce mihne. */
+const ALREADY_CLICKED_FACTOR = 0.4;
 const SPEED_LABEL: Record<Speed, string> = {
   slow: cs.game.speedSlow,
   normal: cs.game.speedNormal,
@@ -118,6 +123,11 @@ export class GameScreen {
   private revealedSeq: number;
   private rolling = false;
   private beatStartedAt = 0;
+  private currentBeat: { beat: Beat; wait: BeatWait } | null = null;
+  private otherLimit: ReturnType<typeof setTimeout> | null = null;
+  /** Poslední odkliknutá událost každého hráče. */
+  private readonly acks = new Map<PlayerId, number>();
+  private readonly unsubscribeAck: () => void;
   private selectedTile: TileId | null = null;
   private draft: TradeDraft | null = null;
   private panel: Panel = null;
@@ -190,6 +200,7 @@ export class GameScreen {
         this.shown = state;
       },
       idle: () => {
+        this.currentBeat = null;
         this.stage.clear();
         this.rolling = false;
         this.revealedSeq = Number.POSITIVE_INFINITY;
@@ -199,6 +210,7 @@ export class GameScreen {
 
     // Pořadí je důležité: scény se musí zařadit dřív, než se bot rozhodne, jestli smí hrát.
     this.unsubscribe = this.transport.subscribe(() => this.onState());
+    this.unsubscribeAck = this.transport.onAcknowledge((player, seq) => this.onAck(player, seq));
     this.bots =
       role === 'guest'
         ? null
@@ -226,6 +238,8 @@ export class GameScreen {
   stop(): void {
     this.minigameAbort.abort();
     this.unsubscribe();
+    this.unsubscribeAck();
+    this.clearOtherLimit();
     this.bots?.stop();
     this.director.stop();
     this.view?.dispose();
@@ -327,6 +341,7 @@ export class GameScreen {
     const fresh = s.events.filter((event) => event.seq > this.lastSeq);
     this.lastSeq = s.eventSeq;
     this.prices.record(s);
+    this.releaseIfBot(s);
     if (this.revealedSeq === Number.POSITIVE_INFINITY)
       this.revealedSeq = fresh[0]?.seq ?? s.eventSeq;
     this.director.enqueue(s, beatsFor(s, fresh, this.me));
@@ -334,16 +349,31 @@ export class GameScreen {
   }
 
   private playBeat(beat: Beat): void {
+    this.clearOtherLimit();
     this.revealedSeq = beat.seq;
     if (beat.text) this.addLine(beat.text, beat.player);
     this.rolling = beat.kind === 'dice';
     if (beat.kind === 'toast') {
-      this.stage.show(beat, 1, false);
+      this.stage.show(beat, 1);
     } else {
+      const wait = beatWait(beat, this.me, this.transport.getState().players);
+      this.currentBeat = { beat, wait };
       this.beatStartedAt = performance.now();
-      this.stage.show(beat, this.scaled('ms' in beat ? beat.ms : 0), waitsForClick(beat));
+      this.stage.show(beat, this.scaled('ms' in beat ? beat.ms : 0), this.footerFor(wait, beat));
     }
     this.render();
+  }
+
+  private footerFor(wait: BeatWait, beat: Beat): StageFooter {
+    if (wait.kind === 'mine') return { kind: 'click' };
+    if (wait.kind === 'other' && !this.clickedAlready(wait.player, beat)) {
+      return { kind: 'waiting', name: this.transport.getState().players[wait.player]?.name ?? '' };
+    }
+    return { kind: 'skip' };
+  }
+
+  private clickedAlready(player: PlayerId, beat: Beat): boolean {
+    return (this.acks.get(player) ?? -1) >= beat.seq;
   }
 
   private scaled(ms: number): number {
@@ -355,17 +385,54 @@ export class GameScreen {
       if (this.speed === 'turbo') return 0;
       return this.view ? this.view.remainingMs + 150 : this.scaled(450);
     }
-    if (!('ms' in beat)) return 0;
-    // Turbo scény přeskakuje úplně, jinak karta a postavy čekají na klik každého hráče zvlášť.
-    if (this.speed === 'turbo') return 0;
-    if (waitsForClick(beat)) return 'hold';
+    if (!('ms' in beat) || this.speed === 'turbo') return 0;
+    const wait = this.currentBeat?.wait;
+    if (wait?.kind === 'mine') return 'hold';
+    if (wait?.kind === 'other') {
+      if (this.clickedAlready(wait.player, beat)) {
+        return Math.round(this.scaled(beat.ms) * ALREADY_CLICKED_FACTOR);
+      }
+      this.otherLimit = setTimeout(() => this.director.skip(), OTHER_CLICK_LIMIT_MS);
+      return 'hold';
+    }
     // Když se fronta plní rychleji, než se přehrává, scény se zkracují, ať hra neutíká.
     return Math.round(this.scaled(beat.ms) * (backlog > 1 ? 0.5 : 1));
   }
 
+  private clearOtherLimit(): void {
+    if (this.otherLimit !== null) clearTimeout(this.otherLimit);
+    this.otherLimit = null;
+  }
+
+  /** Klik nebo mezerník. Cizí scénu zavře jen její majitel, ostatní jen přeskočí boty. */
   private dismissBeat(): void {
     if (performance.now() - this.beatStartedAt < DISMISS_GUARD_MS) return;
+    const current = this.currentBeat;
+    if (current?.wait.kind === 'other' && !this.clickedAlready(current.wait.player, current.beat)) {
+      return;
+    }
+    if (current?.wait.kind === 'mine') this.transport.acknowledge(this.me, current.beat.seq);
     this.director.skip();
+  }
+
+  /** Jiný hráč odklikl svoji scénu. Když ji máme zrovna na obrazovce, zmizí i u nás. */
+  private onAck(player: PlayerId, seq: number): void {
+    if (player === this.me) return;
+    this.acks.set(player, Math.max(this.acks.get(player) ?? -1, seq));
+    const current = this.currentBeat;
+    if (
+      current?.wait.kind === 'other' &&
+      current.wait.player === player &&
+      current.beat.seq <= seq
+    ) {
+      this.director.skip();
+    }
+  }
+
+  /** Člověka mezitím převzal bot (výpadek): na jeho kliknutí už se nečeká. */
+  private releaseIfBot(s: GameState): void {
+    const wait = this.currentBeat?.wait;
+    if (wait?.kind === 'other' && s.players[wait.player]?.bot) this.director.skip();
   }
 
   private patch(el: HTMLElement, html: string): void {

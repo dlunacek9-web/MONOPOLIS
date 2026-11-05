@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createGame } from '../core';
 import type { GameEvent, GameState } from '../core';
-import { beatsFor } from './beats';
+import { beatWait, beatsFor } from './beats';
 
 function game(mode: 'classic' | 'nextlevel' = 'nextlevel'): GameState {
   return createGame(
@@ -54,6 +54,33 @@ describe('scény z událostí', () => {
     const body = { type: 'chaseEnd', player: 1, owner: 0, tile: 1, escaped: true };
     expect(beatsFor(game(), events(body), 0)[0]).toMatchObject({ kind: 'scene', character: 'cop' });
     expect(beatsFor(game(), events(body), 1)[0]).toMatchObject({ kind: 'toast' });
+  });
+
+  describe('kdo scénu odklikává', () => {
+    const players = (botId: number) =>
+      [0, 1, 2].map((id) => ({ bot: id === botId ? {} : null })) as unknown as GameState['players'];
+    const card = (player: number) =>
+      beatsFor(game(), events({ type: 'card', player: 0, deck: 'tip', card: 0 }), 0).map((b) => ({
+        ...b,
+        player,
+      }))[0]!;
+
+    it('vlastní scénu hráč, bota nikdo, jiného člověka on sám', () => {
+      expect(beatWait(card(0), 0, players(2))).toEqual({ kind: 'mine' });
+      expect(beatWait(card(2), 0, players(2))).toEqual({ kind: 'timed' });
+      expect(beatWait(card(1), 0, players(2))).toEqual({ kind: 'other', player: 1 });
+    });
+
+    it('kostky běží samy, i když jsou moje', () => {
+      const [dice] = beatsFor(game(), events({ type: 'roll', player: 0, dice: [1, 2] }), 0);
+      expect(beatWait(dice!, 0, players(2))).toEqual({ kind: 'timed' });
+    });
+
+    it('cizí honička se na nikoho nečeká, její majitel scénu vůbec nevidí', () => {
+      const body = { type: 'chaseEnd', player: 1, owner: 0, tile: 1, escaped: true };
+      const [beat] = beatsFor(game(), events(body), 0);
+      expect(beatWait(beat!, 0, players(2))).toEqual({ kind: 'timed' });
+    });
   });
 
   it('Klasika postavy nepoužívá', () => {

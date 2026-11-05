@@ -3,7 +3,7 @@ import type { Action, GameState, GroupId, PlayerId, TileId, TradeSide } from '..
 import type { MatchOptions } from './match';
 
 /** Zvyš při každé nekompatibilní změně zpráv, ať se nepotkají různé verze hry. */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const MAX_NAME_LENGTH = 20;
 
 export type SeatKind = 'host' | 'guest' | 'bot';
@@ -22,12 +22,16 @@ export interface LobbyView {
 export type GuestMessage =
   | { type: 'hello'; version: number; clientId: string; name: string }
   | { type: 'action'; action: Action }
-  | { type: 'claim'; player: PlayerId };
+  | { type: 'claim'; player: PlayerId }
+  /** Host odklikl svou scénu. Komu patří, určí hostitel podle místa u stolu. */
+  | { type: 'ack'; seq: number };
 
 export type HostMessage =
   | { type: 'lobby'; view: LobbyView }
   /** `seat` je místo příjemce. `null` znamená, že si ještě musí vybrat bota. */
   | { type: 'game'; rev: number; state: GameState; seat: PlayerId | null }
+  /** Hráč odklikl svou scénu, ostatní ji můžou zavřít. */
+  | { type: 'ack'; player: PlayerId; seq: number }
   | { type: 'rejected'; reason: 'full' | 'version' }
   | { type: 'closed' };
 
@@ -136,6 +140,8 @@ export function parseGuestMessage(value: unknown): GuestMessage | null {
     }
     case 'claim':
       return isCount(value.player) ? { type: 'claim', player: value.player } : null;
+    case 'ack':
+      return isCount(value.seq) ? { type: 'ack', seq: value.seq } : null;
     default:
       return null;
   }
@@ -148,6 +154,10 @@ export function parseHostMessage(value: unknown): HostMessage | null {
       return isRecord(value.view) ? (value as unknown as HostMessage) : null;
     case 'game':
       return isCount(value.rev) && isRecord(value.state) ? (value as unknown as HostMessage) : null;
+    case 'ack':
+      return isCount(value.player) && isCount(value.seq)
+        ? { type: 'ack', player: value.player, seq: value.seq }
+        : null;
     case 'rejected':
       return value.reason === 'full' || value.reason === 'version'
         ? { type: 'rejected', reason: value.reason }
