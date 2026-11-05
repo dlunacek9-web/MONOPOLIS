@@ -95,6 +95,12 @@ export function canBribePolice(s: GameState, player: PlayerId): boolean {
   return canAffordBribe(s, player, rules().police);
 }
 
+/** Útěk jde zkusit místo hodu. Pokuta se platí až po nezdaru, takže peníze předem nejsou potřeba. */
+export function canBreakout(s: GameState, player: PlayerId): boolean {
+  if (!hasBusiness(s) || s.phase !== 'awaitRoll') return false;
+  return canManage(s, player) && s.debts.length === 0 && playerOf(s, player).inJail;
+}
+
 /** Stavba mimo pořadí. Když jde stavět normálně, úplatek nedává smysl a nenabízí se. */
 export function canBribeBuild(s: GameState, player: PlayerId, tile: TileId): boolean {
   if (!canDoCrime(s, player)) return false;

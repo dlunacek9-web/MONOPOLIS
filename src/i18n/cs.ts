@@ -290,6 +290,36 @@ export const cs = {
     highway: 'DÁLNICE',
     unit: 'km/h',
   },
+  breakout: {
+    logStart: (name: string) => `${name} v noci vylezl z cely a míří k plotu!`,
+    logEscaped: (name: string) => `${name} proklouzl dvorem a je venku.`,
+    logCaught: (name: string, fine: string) =>
+      `${name} skončil v reflektoru. Pokuta ${fine} a zpátky do cely.`,
+    logOut: (name: string) => `${name} je na svobodě a nikdo nic neviděl.`,
+    action: 'Zkusit útěk',
+    actionSub: (fine: string) => `chytí tě: ${fine}`,
+    actionTip:
+      'Zahraješ si útěk přes vězeňský dvůr. Když to vyjde, jsi venku zdarma a házíš. Když ne, platíš pokutu a tah končí.',
+    running: (name: string) => `${name} se plíží vězeňským dvorem…`,
+    introTitle: 'Útěk',
+    introBubble: 'Večerka. A ať tě nenapadne vystrčit nos z cely.',
+    introGoal:
+      'Seber klíč a dostaň se k bráně. Vyhýbej se reflektorům a pohledu bachařů. Máš 45 sekund.',
+    introKeys: [
+      { keys: ['W', 'A', 'S', 'D'], label: 'pohyb (nebo šipky)' },
+      { keys: ['Shift'], label: 'sprint, bachaři ho slyší' },
+    ],
+    start: 'Jdu na to!',
+    skip: (pct: number) => `Přeskočit (šance na útěk ${pct} %)`,
+    escaped: 'JSI VENKU!',
+    caught: 'ZPÁTKY DO CELY!',
+    escapedText: 'Odcházíš zdarma a hned házíš.',
+    caughtText: (fine: string) => `Platíš pokutu ${fine} a tvůj tah končí.`,
+    findKey: 'Najdi klíč',
+    toGate: 'Klíč máš! Běž k bráně',
+    alarm: 'POPLACH',
+    sprint: 'SPRINT',
+  },
   game: {
     round: (n: number) => `Kolo ${n}`,
     roll: 'Hodit kostkami',
@@ -405,6 +435,9 @@ export const cs = {
     chase: ['Máme běžence! Všechny vozy za ním!', 'Sedí v autě a nájem neplatí!'],
     chaseEscaped: 'Ztratili jsme ho na dálnici.',
     chaseCaught: 'Mám ho. Vystupovat, ruce na kapotu.',
+    breakout: ['Prázdná cela! Spusťte reflektory!', 'Jeden nám leze přes dvůr!'],
+    breakoutEscaped: 'V cele je jen peřina a vzkaz: Díky za všechno.',
+    breakoutCaught: 'Máme ho. Procházka skončila.',
   },
   /** Razítka: krátká, velká a jen velkými písmeny. */
   stamp: {

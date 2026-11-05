@@ -2472,6 +2472,25 @@ td:last-child {
   pointer-events: none;
 }
 
+.mg-objective {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.mg-vignette {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 160px 50px #ff2b2bb0;
+}
+
 .mg-count[hidden],
 .mg-hud[hidden],
 .mg-panel[hidden],

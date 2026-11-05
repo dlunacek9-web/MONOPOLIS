@@ -124,7 +124,14 @@ export interface TradeOffer {
 }
 
 export type Phase =
-  'awaitRoll' | 'awaitBuy' | 'awaitTax' | 'awaitRent' | 'chase' | 'awaitEnd' | 'gameOver';
+  | 'awaitRoll'
+  | 'awaitBuy'
+  | 'awaitTax'
+  | 'awaitRent'
+  | 'chase'
+  | 'breakout'
+  | 'awaitEnd'
+  | 'gameOver';
 export type BribeKind = 'official' | 'police' | 'build';
 export type BustReason = BribeKind | 'launder' | 'pump';
 
@@ -144,7 +151,11 @@ export type GameEventBody =
   | { type: 'pay'; player: PlayerId; amount: number; to: PlayerId | null }
   | { type: 'jail'; player: PlayerId }
   | { type: 'jailStay'; player: PlayerId; attempt: number }
-  | { type: 'jailOut'; player: PlayerId; how: 'bail' | 'card' | 'doubles' | 'forced' | 'bribe' }
+  | {
+      type: 'jailOut';
+      player: PlayerId;
+      how: 'bail' | 'card' | 'doubles' | 'forced' | 'bribe' | 'breakout';
+    }
   | { type: 'threeDoubles'; player: PlayerId }
   | { type: 'auctionStart'; tile: TileId }
   | { type: 'bid'; player: PlayerId; amount: number }
@@ -178,6 +189,8 @@ export type GameEventBody =
   | { type: 'dump'; player: PlayerId; group: GroupId; price: number }
   | { type: 'chaseStart'; player: PlayerId; owner: PlayerId; tile: TileId }
   | { type: 'chaseEnd'; player: PlayerId; owner: PlayerId; tile: TileId; escaped: boolean }
+  | { type: 'breakoutStart'; player: PlayerId }
+  | { type: 'breakoutEnd'; player: PlayerId; escaped: boolean; fine: number }
   | { type: 'controller'; player: PlayerId; previous: string; bot: boolean };
 
 export type GameEvent = GameEventBody & { seq: number };
@@ -264,6 +277,12 @@ export type Action =
   | { type: 'chaseResult'; player: PlayerId; escaped: boolean }
   /** Honička bez hraní: rozhodne seedovaný generátor. */
   | { type: 'chaseSkip'; player: PlayerId }
+  /** Pokus o útěk z vězení místo hodu. */
+  | { type: 'breakout'; player: PlayerId }
+  /** Výsledek odehraného útěku. */
+  | { type: 'breakoutResult'; player: PlayerId; escaped: boolean }
+  /** Útěk bez hraní: rozhodne seedovaný generátor. */
+  | { type: 'breakoutSkip'; player: PlayerId }
   /** Místo u stolu přebírá člověk nebo bot. Posílá jen hostitel, nikdy hráč po síti. */
   | { type: 'setController'; player: PlayerId; name: string; bot: BotConfig | null };
 
@@ -330,6 +349,11 @@ export interface BusinessRules {
     autoEscapePct: number;
     cooldownRounds: number;
     caughtRentFactor: number;
+  };
+  breakout: {
+    /** Šance na útěk, když se minihra nehraje. */
+    autoEscapePct: number;
+    fine: number;
   };
   perks: Record<Archetype, Partial<ArchetypePerks>>;
 }

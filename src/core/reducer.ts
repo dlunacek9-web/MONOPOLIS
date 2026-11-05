@@ -21,6 +21,7 @@ import {
   bribeRiskPct,
   canBribeBuild,
   canBribeOfficial,
+  canBreakout,
   canBribePolice,
   canBuyShares,
   canLaunder,
@@ -282,6 +283,26 @@ function finishChase(s: GameState, player: PlayerId, escaped: boolean): void {
   if (escaped) return;
   chargeRent(s, player, owner, tile, amount * BUSINESS!.chase.caughtRentFactor);
   sendToJail(s, player);
+}
+
+/** Konec útěku. Úspěch pustí hráče k běžnému hodu, nezdar stojí pokutu a zbytek tahu. */
+function finishBreakout(s: GameState, player: PlayerId, escaped: boolean): void {
+  const p = playerOf(s, player);
+  if (escaped) {
+    emit(s, { type: 'breakoutEnd', player, escaped, fine: 0 });
+    p.inJail = false;
+    p.jailTurns = 0;
+    s.phase = 'awaitRoll';
+    emit(s, { type: 'jailOut', player, how: 'breakout' });
+    return;
+  }
+  const fine = BUSINESS!.breakout.fine;
+  emit(s, { type: 'breakoutEnd', player, escaped, fine });
+  // Nezdar se počítá jako pokus, ale nucený odchod s kaucí řeší až další hod.
+  p.jailTurns = Math.min(p.jailTurns + 1, MAX_JAIL_ATTEMPTS - 1);
+  s.phase = 'awaitEnd';
+  s.extraRoll = false;
+  charge(s, player, null, fine);
 }
 
 /** Nájem na ruku: nájemník platí nejdřív černými, majitel dostane vše v černých i s přirážkou. */
@@ -1043,6 +1064,22 @@ function apply(s: GameState, action: Action): void {
       requirePlainTurn(s, player);
       if (s.phase !== 'chase' || !BUSINESS) illegal('Neběží honička');
       finishChase(s, player, randomInt(s, 100) < BUSINESS.chase.autoEscapePct);
+      break;
+    case 'breakout':
+      if (!canBreakout(s, player)) illegal('Teď se nedá utéct');
+      s.phase = 'breakout';
+      emit(s, { type: 'breakoutStart', player });
+      break;
+    case 'breakoutResult':
+      requirePlainTurn(s, player);
+      if (s.phase !== 'breakout') illegal('Neběží útěk');
+      if (typeof action.escaped !== 'boolean') illegal('Neplatný výsledek');
+      finishBreakout(s, player, action.escaped);
+      break;
+    case 'breakoutSkip':
+      requirePlainTurn(s, player);
+      if (s.phase !== 'breakout' || !BUSINESS) illegal('Neběží útěk');
+      finishBreakout(s, player, randomInt(s, 100) < BUSINESS.breakout.autoEscapePct);
       break;
     case 'pumpDump': {
       if (!canPumpDump(s, player, action.group) || !BUSINESS) illegal('Pump & dump teď nejde');

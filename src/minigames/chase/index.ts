@@ -1,6 +1,8 @@
 import { BUSINESS, type Action, type PlayerId } from '../../core';
 import { cs } from '../../i18n/cs';
-import { endPanel, introPanel, showEnd as showEndPanel } from '../shell';
+import { runArcade } from '../arcade';
+import type { Keys } from '../arcade';
+import { endPanel, introPanel } from '../shell';
 import type { Minigame, MinigameContext } from '../types';
 import { perCar, policeController, trafficController } from './ai';
 import { BOUND, GRID, PITCH, ROAD, createMap } from './map';
@@ -16,7 +18,6 @@ export interface ChaseInput {
 
 export type ChaseResult = ChaseOutcome | 'skipped';
 
-const COUNTDOWN = 3;
 /** Metry za sekundu na km/h a kousek navíc, ať rychlost na tachometru vypadá arkádově. */
 const SPEED_TO_KMH = 5.5;
 const KEYS = new Set([
@@ -34,38 +35,13 @@ const KEYS = new Set([
 ]);
 
 /** Klávesnice člověka jako běžný ovladač auta. */
-class Keyboard {
-  private readonly pressed = new Set<string>();
-  private readonly onDown = (event: KeyboardEvent) => {
-    if (!KEYS.has(event.code)) return;
-    event.preventDefault();
-    this.pressed.add(event.code);
-  };
-  private readonly onUp = (event: KeyboardEvent) => this.pressed.delete(event.code);
-  private readonly onBlur = () => this.pressed.clear();
-
-  constructor() {
-    window.addEventListener('keydown', this.onDown);
-    window.addEventListener('keyup', this.onUp);
-    window.addEventListener('blur', this.onBlur);
-  }
-
-  private any(...codes: string[]): boolean {
-    return codes.some((code) => this.pressed.has(code));
-  }
-
-  readonly controller: CarController = (): CarInput => ({
-    throttle: (this.any('KeyW', 'ArrowUp') ? 1 : 0) - (this.any('KeyS', 'ArrowDown') ? 1 : 0),
-    steer: (this.any('KeyA', 'ArrowLeft') ? 1 : 0) - (this.any('KeyD', 'ArrowRight') ? 1 : 0),
-    drift: this.any('Space'),
-    nitro: this.any('ShiftLeft', 'ShiftRight'),
+function keyboardController(keys: Keys): CarController {
+  return (): CarInput => ({
+    throttle: (keys.any('KeyW', 'ArrowUp') ? 1 : 0) - (keys.any('KeyS', 'ArrowDown') ? 1 : 0),
+    steer: (keys.any('KeyA', 'ArrowLeft') ? 1 : 0) - (keys.any('KeyD', 'ArrowRight') ? 1 : 0),
+    drift: keys.any('Space'),
+    nitro: keys.any('ShiftLeft', 'ShiftRight'),
   });
-
-  dispose(): void {
-    window.removeEventListener('keydown', this.onDown);
-    window.removeEventListener('keyup', this.onUp);
-    window.removeEventListener('blur', this.onBlur);
-  }
 }
 
 let rapierLoad: Promise<Rapier> | null = null;
@@ -149,128 +125,61 @@ function hudMarkup(): string {
     ${endPanel()}`;
 }
 
+function updateHud(root: HTMLElement, sim: ChaseSim): void {
+  const find = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
+  find('.mg-timer').textContent = sim.timeLeft.toFixed(1);
+  find('.mg-timer').classList.toggle('low', sim.timeLeft < 10);
+  find('.mg-nitro i').style.setProperty('--v', String(sim.nitro));
+  find('.mg-speed b').textContent = String(Math.round(sim.runner.speed * SPEED_TO_KMH));
+  const arrest = find('.mg-arrest');
+  arrest.hidden = sim.arrest <= 0;
+  find('.mg-arrest i').style.setProperty('--v', String(sim.arrest));
+  drawMinimap(find<HTMLCanvasElement>('.mg-map'), sim);
+}
+
 /** Jedno spuštění honičky: úvod, odpočet, jízda a výsledek. */
 function run({ host, input, signal }: MinigameContext<ChaseInput>): Promise<ChaseResult> {
-  return new Promise<ChaseResult>((resolve, reject) => {
-    const root = document.createElement('div');
-    root.className = 'minigame';
-    root.innerHTML = hudMarkup();
-    host.append(root);
-    const find = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
-
-    const keyboard = new Keyboard();
-    let sim: ChaseSim | null = null;
-    let view: ChaseView | null = null;
-    let frame = 0;
-    let finished = false;
-
-    const cleanup = () => {
-      finished = true;
-      cancelAnimationFrame(frame);
-      keyboard.dispose();
-      window.removeEventListener('keydown', onEnter);
-      signal.removeEventListener('abort', onAbort);
-      view?.dispose();
-      sim?.free();
-      root.remove();
-    };
-    const finish = (result: ChaseResult) => {
-      if (finished) return;
-      cleanup();
-      resolve(result);
-    };
-    const onAbort = () => finish('skipped');
-    signal.addEventListener('abort', onAbort);
-
-    const panelButton = (name: string) => find<HTMLButtonElement>(`[data-mg="${name}"]`);
-    const onEnter = (event: KeyboardEvent) => {
-      if (event.code !== 'Enter') return;
-      const panel = root.querySelector<HTMLButtonElement>(
-        '.mg-panel:not([hidden]) .btn.primary:not(:disabled)',
-      );
-      panel?.click();
-    };
-    window.addEventListener('keydown', onEnter);
-
-    panelButton('skip').onclick = () => finish('skipped');
-
-    const updateHud = (active: ChaseSim) => {
-      find('.mg-timer').textContent = active.timeLeft.toFixed(1);
-      find('.mg-timer').classList.toggle('low', active.timeLeft < 10);
-      find('.mg-nitro i').style.setProperty('--v', String(active.nitro));
-      find('.mg-speed b').textContent = String(Math.round(active.runner.speed * SPEED_TO_KMH));
-      const arrest = find('.mg-arrest');
-      arrest.hidden = active.arrest <= 0;
-      find('.mg-arrest i').style.setProperty('--v', String(active.arrest));
-      drawMinimap(find<HTMLCanvasElement>('.mg-map'), active);
-    };
-
-    const showEnd = (outcome: ChaseOutcome) => {
+  return runArcade<ChaseOutcome>({
+    host,
+    signal,
+    markup: hudMarkup(),
+    keys: KEYS,
+    startLabel: cs.chase.start,
+    load: async (root, keys) => {
+      const rapier = await loadRapier();
+      const map = createMap(input.seed);
+      const sim = new ChaseSim({
+        rapier,
+        seed: input.seed,
+        runner: keyboardController(keys),
+        police: perCar(policeController),
+        traffic: trafficController(map, input.seed),
+      });
+      const view = new ChaseView(root.querySelector<HTMLElement>('.mg-scene')!, sim, input.color);
+      view.render(0);
+      return {
+        get outcome() {
+          return sim.outcome;
+        },
+        advance: (dt) => sim.advance(dt),
+        render: (dt) => view.render(dt),
+        updateHud: () => updateHud(root, sim),
+        dispose: () => {
+          view.dispose();
+          sim.free();
+        },
+      };
+    },
+    end: (outcome) => {
       const t = cs.chase;
       const won = outcome === 'escaped';
-      showEndPanel(root, {
+      return {
         won,
         title: won ? t.escaped : t.caught,
         text: won ? t.escapedText : t.caughtText,
         who: 'cop',
-      });
-      panelButton('resume').onclick = () => finish(outcome);
-    };
-
-    const play = (activeSim: ChaseSim, activeView: ChaseView) => {
-      find('.mg-intro').hidden = true;
-      find('.mg-hud').hidden = false;
-      const count = find('.mg-count');
-      count.hidden = false;
-      let countdown = COUNTDOWN;
-      let last = performance.now();
-      let ended = false;
-      const tick = (now: number) => {
-        if (finished) return;
-        const dt = Math.min(0.1, (now - last) / 1000);
-        last = now;
-        if (countdown > 0) {
-          countdown -= dt;
-          count.textContent = String(Math.ceil(Math.max(countdown, 0.01)));
-          if (countdown <= 0) count.hidden = true;
-        } else {
-          activeSim.advance(dt);
-          if (activeSim.outcome && !ended) {
-            ended = true;
-            showEnd(activeSim.outcome);
-          }
-        }
-        updateHud(activeSim);
-        activeView.render(dt);
-        frame = requestAnimationFrame(tick);
       };
-      updateHud(activeSim);
-      frame = requestAnimationFrame(tick);
-    };
-
-    void loadRapier()
-      .then((rapier) => {
-        if (finished) return;
-        const map = createMap(input.seed);
-        sim = new ChaseSim({
-          rapier,
-          seed: input.seed,
-          runner: keyboard.controller,
-          police: perCar(policeController),
-          traffic: trafficController(map, input.seed),
-        });
-        view = new ChaseView(find('.mg-scene'), sim, input.color);
-        view.render(0);
-        const start = panelButton('start');
-        start.disabled = false;
-        start.textContent = cs.chase.start;
-        start.onclick = () => play(sim!, view!);
-      })
-      .catch((error: unknown) => {
-        if (finished) return;
-        cleanup();
-        reject(error instanceof Error ? error : new Error(String(error)));
-      });
+    },
   });
 }
 

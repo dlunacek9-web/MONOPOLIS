@@ -212,8 +212,8 @@ export function beatsFor(s: GameState, events: readonly GameEvent[], me: PlayerI
         beats.push(banner('bad'));
         break;
       case 'jailOut':
-        // Úplatek policajtovi má vlastní scénu, tady by se jen opakoval.
-        if (e.how !== 'bribe') beats.push(toast());
+        // Úplatek i útěk mají vlastní scénu, tady by se jen opakovaly.
+        if (e.how !== 'bribe' && e.how !== 'breakout') beats.push(toast());
         else beats.push({ ...base, kind: 'note' });
         break;
       case 'auctionStart':
@@ -313,6 +313,29 @@ export function beatsFor(s: GameState, events: readonly GameEvent[], me: PlayerI
                 'police',
                 'cop',
                 [e.escaped ? cs.scene.chaseEscaped : cs.scene.chaseCaught],
+                {
+                  text: e.escaped ? cs.stamp.escaped : cs.stamp.arrested,
+                  good: e.escaped,
+                },
+                'siren',
+              ),
+        );
+        break;
+      case 'breakoutStart':
+        beats.push(
+          e.player === me
+            ? banner('bad', MS.turn)
+            : scene('police', 'cop', [pick(cs.scene.breakout, e.seq)], null, 'siren'),
+        );
+        break;
+      case 'breakoutEnd':
+        beats.push(
+          e.player === me
+            ? toast(e.escaped ? null : -e.fine)
+            : scene(
+                'police',
+                'cop',
+                [e.escaped ? cs.scene.breakoutEscaped : cs.scene.breakoutCaught],
                 {
                   text: e.escaped ? cs.stamp.escaped : cs.stamp.arrested,
                   good: e.escaped,

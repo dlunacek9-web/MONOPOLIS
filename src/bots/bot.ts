@@ -9,6 +9,7 @@ import {
   buildCost,
   canBribeBuild,
   canBribeOfficial,
+  canBreakout,
   canBribePolice,
   canBuild,
   canBuyShares,
@@ -399,6 +400,13 @@ function choosePoliceBribe(s: GameState, me: PlayerId): Action | null {
     : null;
 }
 
+/** Pokutu si musí moct dovolit a odvahu dává povaha, stejně jako u úplatku. */
+function wantsBreakout(s: GameState, me: PlayerId): boolean {
+  if (!BUSINESS || !canBreakout(s, me)) return false;
+  const safe = playerOf(s, me).cash >= BUSINESS.breakout.fine + botOf(s, me).traits.buyReserve;
+  return safe && dares(s, me, 7, botOf(s, me).traits.crime);
+}
+
 function wantsOutOfJail(s: GameState): boolean {
   const unowned = s.deeds.filter((deed) => deed && deed.owner === null).length;
   const buildings = s.deeds.some((deed) => deed && deed.level > 0);
@@ -417,6 +425,7 @@ function chooseRollPhase(s: GameState, me: PlayerId): Action {
     if (p.jailCards.length > 0) return { type: 'useJailCard', player: me };
     const bribe = choosePoliceBribe(s, me);
     if (bribe) return bribe;
+    if (wantsBreakout(s, me)) return { type: 'breakout', player: me };
     if (p.cash >= JAIL_BAIL + botOf(s, me).traits.buyReserve) {
       return { type: 'payBail', player: me };
     }
@@ -455,6 +464,7 @@ export function chooseBotAction(s: GameState, me: PlayerId): Action {
   if (s.phase === 'awaitRent') return chooseRent(s, me);
   // Bot se nehraje, stejně jako když člověk honičku přeskočí.
   if (s.phase === 'chase') return { type: 'chaseSkip', player: me };
+  if (s.phase === 'breakout') return { type: 'breakoutSkip', player: me };
   if (s.phase === 'awaitRoll') return chooseRollPhase(s, me);
   return manage(s, me) ?? chooseBusiness(s, me) ?? { type: 'endTurn', player: me };
 }

@@ -192,7 +192,7 @@ Délka podle důležitosti: běžné situace (honička, útěk z vězení) jsou 
 | Minihra              | Spouštěč                  | Výsledek                                        | Auto-resolve (návrh) |
 | -------------------- | ------------------------- | ----------------------------------------------- | -------------------- |
 | Honička autem        | Cizí pozemek, místo nájmu | Ujedeš: neplatíš. Chytí tě: dvojnásobek a vazba | Šance na útěk 45 %   |
-| Útěk z vězení        | Místo čekání              | Ven zdarma, nebo pokuta a tah ve vězení         | Šance 40 %           |
+| Útěk z vězení        | Ve vazbě, místo hodu      | Ven zdarma, nebo pokuta a tah ve vězení         | Šance 40 %           |
 | Live aukce           | Odmítnutá koupě           | Pozemek za nejvyšší příhoz                      | Tahová dražba        |
 | Tower defense hotelu | Heist na hotel            | Obrana, nebo ztráta peněz                       | 50 % ± rozdíl úrovní |
 
@@ -206,6 +206,20 @@ Jen v režimu Next level. Po příjezdu na cizí nezastavený pozemek se hráč 
 - **Boti a přeskočení:** bot se nehraje, rozhodne `autoResolve()` se šancí 45 %. Člověk může honičku přeskočit před startem za stejných podmínek.
 - **Multiplayer:** honičku počítá jen počítač ujíždějícího hráče, policii řídí AI a ostatní dostanou výsledek.
 - **Vzhled:** low-poly s plochým stínováním, jednolitý opar a tlusté bílé číslice v HUD. Grafickou referencí je nálada hry Grapples Galore, ale modely a prostředí jsou vlastní a žádné její mechaniky nepřebíráme.
+
+### Útěk z vězení
+
+Jen v režimu Next level. Ve vazbě může hráč místo hodu, kauce nebo úplatku zkusit útěk.
+
+- **Cíl:** za 45 s sebrat klíč a dostat se k bráně na opačné straně vězeňského dvora.
+- **Úspěch:** hráč je venku zdarma a hned hází.
+- **Nezdar:** pokuta 30 000 Kč, tah končí a pokus se počítá jako jeden ze tří pokusů o dubl. Poslední pokus ale řeší až hod. Pokuta, na kterou hráč nemá, se stává běžným dluhem.
+- **Chycení:** naplní se měřák poplachu, dotkne se tě bachař, nebo vyprší čas.
+- **Poplach:** plní ho reflektory a pohled tří bachařů, rychleji zblízka. Překážky zakrývají výhled, mimo dohled poplach pomalu klesá. Reflektor navíc přivolá nejbližšího bachaře.
+- **Ovládání:** WASD nebo šipky, Shift na krátký sprint. Sprint slyší bachaři v okolí i přes překážky a jdou se podívat.
+- **Boti a přeskočení:** bot se nehraje, rozhodne `autoResolve()` se šancí 40 %. Člověk může útěk přeskočit před startem za stejných podmínek. Bot to zkouší podle ochoty ke zločinu, jen když si může dovolit pokutu.
+- **Multiplayer:** útěk počítá jen počítač utíkajícího hráče a ostatní dostanou výsledek.
+- **Vzhled:** stejný low-poly jazyk, ale noční scéna, aby vynikly reflektory.
 
 ## 9. Progrese
 

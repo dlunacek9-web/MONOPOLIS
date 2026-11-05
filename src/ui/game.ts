@@ -12,6 +12,7 @@ import {
   buildCost,
   canBribeBuild,
   canBribeOfficial,
+  canBreakout,
   canBribePolice,
   canBuild,
   canMortgage,
@@ -37,6 +38,7 @@ import { cs, formatMoney, formatMoneyShort } from '../i18n/cs';
 import { BotRunner } from '../bots/runner';
 import type { GameTransport } from '../net/transport';
 import { publishGameEnd, summarizeGame } from '../profile/profile';
+import { breakoutMinigame } from '../minigames/breakout';
 import { chaseMinigame } from '../minigames/chase';
 import type { Minigame } from '../minigames/types';
 import { CityView } from '../render/city-view';
@@ -400,16 +402,18 @@ export class GameScreen {
   private syncMinigame(): void {
     const s = this.state;
     const mine = s.active === this.me && !s.players[this.me]?.bot;
-    if (s.phase !== 'chase') {
+    if (s.phase !== 'chase' && s.phase !== 'breakout') {
       this.minigameRunning = false;
       return;
     }
     if (!mine || this.minigameRunning || this.director.busy || this.view?.busy) return;
-    this.runMinigame(chaseMinigame, {
+    const input = {
       player: this.me,
       seed: (s.rng ^ s.turn) | 0,
       color: PLAYER_COLORS[this.me] ?? '#ffffff',
-    });
+    };
+    if (s.phase === 'chase') this.runMinigame(chaseMinigame, input);
+    else this.runMinigame(breakoutMinigame, input);
   }
 
   /** Společné spuštění všech miniher: pauza města, hra, zápis výsledku běžnou akcí. */
@@ -644,7 +648,7 @@ export class GameScreen {
       return {
         ...none,
         key: `wait${actor}`,
-        prompt: s.phase === 'chase' ? cs.chase.running(name) : t.waiting(name),
+        prompt: this.waitingPrompt(s, name),
         tone: 'wait',
         deed: s.auction?.tile,
       };
@@ -699,8 +703,9 @@ export class GameScreen {
     }
     if (s.phase === 'awaitTax' && s.pendingTax) return this.decideTax(s, s.pendingTax);
     if (s.phase === 'awaitRent' && s.pendingRent) return this.decideRent(s, s.pendingRent);
-    if (s.phase === 'chase') {
-      return { ...none, key: 'chase', prompt: cs.chase.running(escapeHtml(me.name)), tone: 'wait' };
+    if (s.phase === 'chase' || s.phase === 'breakout') {
+      const prompt = this.waitingPrompt(s, escapeHtml(me.name));
+      return { ...none, key: s.phase, prompt, tone: 'wait' };
     }
     if (s.phase === 'awaitRoll') return this.decideRoll(s);
     const again = s.extraRoll && !me.inJail;
@@ -716,6 +721,12 @@ export class GameScreen {
       ],
       doors: true,
     };
+  }
+
+  private waitingPrompt(s: GameState, name: string): string {
+    if (s.phase === 'chase') return cs.chase.running(name);
+    if (s.phase === 'breakout') return cs.breakout.running(name);
+    return cs.game.waiting(name);
   }
 
   private decideRoll(s: GameState): Decision {
@@ -750,6 +761,16 @@ export class GameScreen {
           icon: 'envelope',
           sub: cs.biz.bribeSub(formatMoneyShort(bribeCost(s, this.me, rules))),
           risk: bribeRiskPct(s, this.me, rules),
+        }),
+      );
+    }
+    if (BUSINESS && canBreakout(s, this.me)) {
+      actions.push(
+        act(cs.breakout.action, 'breakout', {
+          kind: 'danger',
+          icon: 'bars',
+          sub: cs.breakout.actionSub(formatMoneyShort(BUSINESS.breakout.fine)),
+          tip: cs.breakout.actionTip,
         }),
       );
     }
@@ -1174,6 +1195,7 @@ export class GameScreen {
       case 'endTurn':
       case 'payRent':
       case 'flee':
+      case 'breakout':
       case 'payTax':
       case 'bribeOfficial':
       case 'bribePolice':
