@@ -40,7 +40,8 @@ export function actorOf(s: GameState): PlayerId | null {
 
 /** Spravovat majetek lze na vlastním tahu nebo během vlastního dluhu. */
 export function canManage(s: GameState, player: PlayerId): boolean {
-  if (s.trade || s.auction || s.phase === 'gameOver' || s.phase === 'chase') return false;
+  if (s.trade || s.auction) return false;
+  if (s.phase === 'gameOver' || s.phase === 'chase' || s.phase === 'breakout') return false;
   return actorOf(s) === player && !playerOf(s, player).bankrupt;
 }
 

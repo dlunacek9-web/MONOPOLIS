@@ -42,6 +42,12 @@ export function formatEvent(s: GameState, e: GameEvent): string {
       return e.escaped
         ? cs.chase.logEscaped(name(s, e.player), name(s, e.owner))
         : cs.chase.logCaught(name(s, e.player));
+    case 'breakoutStart':
+      return cs.breakout.logStart(name(s, e.player));
+    case 'breakoutEnd':
+      return e.escaped
+        ? cs.breakout.logEscaped(name(s, e.player))
+        : cs.breakout.logCaught(name(s, e.player), formatMoney(e.fine));
     case 'rent':
       return l.rent(name(s, e.player), name(s, e.owner), tile(e.tile), formatMoney(e.amount));
     case 'mortgagedNoRent':
@@ -63,6 +69,7 @@ export function formatEvent(s: GameState, e: GameEvent): string {
       if (e.how === 'card') return l.jailOutCard(name(s, e.player));
       if (e.how === 'doubles') return l.jailOutDoubles(name(s, e.player));
       if (e.how === 'bribe') return l.jailOutBribe(name(s, e.player));
+      if (e.how === 'breakout') return cs.breakout.logOut(name(s, e.player));
       return l.jailOutForced(name(s, e.player));
     case 'threeDoubles':
       return l.threeDoubles(name(s, e.player));

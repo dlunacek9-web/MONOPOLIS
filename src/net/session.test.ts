@@ -443,7 +443,7 @@ describe('převzetí místa v pravidlech', () => {
 describe('zprávy honičky', () => {
   it('host smí poslat rozhodnutí a výsledek, ale jen ve správném tvaru', () => {
     const parse = (action: unknown) => parseGuestMessage({ type: 'action', action });
-    for (const type of ['payRent', 'flee', 'chaseSkip']) {
+    for (const type of ['payRent', 'flee', 'chaseSkip', 'breakout', 'breakoutSkip']) {
       expect(parse({ type, player: 1 })).toEqual({ type: 'action', action: { type, player: 1 } });
     }
     expect(parse({ type: 'chaseResult', player: 1, escaped: true })).toEqual({

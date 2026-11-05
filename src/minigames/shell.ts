@@ -50,11 +50,15 @@ export function endPanel(): string {
     </div>`;
 }
 
+export interface EndOptions {
+  won: boolean;
+  title: string;
+  text: string;
+  who: CharacterId;
+}
+
 /** Vyplní závěrečný panel a ukáže ho. */
-export function showEnd(
-  root: HTMLElement,
-  options: { won: boolean; title: string; text: string; who: CharacterId },
-): void {
+export function showEnd(root: HTMLElement, options: EndOptions): void {
   const panel = root.querySelector<HTMLElement>('.mg-end')!;
   panel.hidden = false;
   panel.classList.toggle('won', options.won);

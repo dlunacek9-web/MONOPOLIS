@@ -86,10 +86,16 @@ function parseAction(value: unknown): Action | null {
     case 'payRent':
     case 'flee':
     case 'chaseSkip':
+    case 'breakout':
+    case 'breakoutSkip':
       return { type: value.type, player };
     case 'chaseResult':
       return typeof value.escaped === 'boolean'
         ? { type: 'chaseResult', player, escaped: value.escaped }
+        : null;
+    case 'breakoutResult':
+      return typeof value.escaped === 'boolean'
+        ? { type: 'breakoutResult', player, escaped: value.escaped }
         : null;
     case 'bid':
       return isCount(value.amount) ? { type: 'bid', player, amount: value.amount } : null;
