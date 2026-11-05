@@ -3,7 +3,7 @@ import { Director } from './director';
 
 interface TestBeat {
   name: string;
-  ms: number;
+  ms: number | 'hold';
 }
 
 function setup() {
@@ -60,6 +60,18 @@ describe('režisér událostí', () => {
     const { log, director } = setup();
     director.enqueue('A', []);
     expect(log).toEqual(['settle:A', 'idle']);
+    expect(director.busy).toBe(false);
+  });
+
+  it('scéna čekající na klik nezmizí sama, ani když přijde další dávka', () => {
+    const { log, director } = setup();
+    director.enqueue('A', [{ name: 'karta', ms: 'hold' }]);
+    vi.advanceTimersByTime(60_000);
+    director.enqueue('B', [{ name: 'dalsi', ms: 0 }]);
+    expect(log).toEqual(['settle:A', 'play:karta']);
+    expect(director.busy).toBe(true);
+    director.skip();
+    expect(log).toEqual(['settle:A', 'play:karta', 'settle:B', 'play:dalsi', 'idle']);
     expect(director.busy).toBe(false);
   });
 

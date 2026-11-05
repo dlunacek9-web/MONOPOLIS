@@ -59,6 +59,7 @@ Pořadí fází: 2 → 3 → 4 → 5 a dál. Multiplayer jde před byznysovou vr
 - [x] Vzhled deskovka a podsvětí: různá tlačítka pro legální tahy, černý byznys a burzu
 - [x] Burza a Zadní místnost jako samostatné obrazovky, spodní lišta se třemi dveřmi
 - [x] Společný úvod a závěr miniher
+- [x] Pomalé tempo, karty a scény s postavami čekají na kliknutí každého hráče
 
 ## Fáze 6 — Útěk z vězení, live aukce a vyjednávání
 

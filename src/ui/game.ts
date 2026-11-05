@@ -42,7 +42,7 @@ import type { Minigame } from '../minigames/types';
 import { CityView } from '../render/city-view';
 import { footText } from '../render/tile-info';
 import { renderBackroom } from './backroom';
-import { beatsFor } from './beats';
+import { beatsFor, waitsForClick } from './beats';
 import type { Beat } from './beats';
 import { PLAYER_COLORS, renderBoard, shortTileName, tileColor } from './board';
 import { act } from './buttons';
@@ -65,12 +65,20 @@ interface TradeDraft {
 
 export type GameRole = 'solo' | 'host' | 'guest';
 
-type Speed = 'normal' | 'fast' | 'turbo';
+type Speed = 'slow' | 'normal' | 'fast' | 'turbo';
 type Panel = 'market' | 'backroom' | null;
 
 /** Pauza bota před dalším tahem. Délku scén k tomu řídí režisér. */
-const SPEED_MS: Record<Speed, number> = { normal: 700, fast: 150, turbo: 15 };
-const SPEED_FACTOR: Record<Speed, number> = { normal: 1, fast: 0.45, turbo: 0 };
+const SPEED_MS: Record<Speed, number> = { slow: 1600, normal: 700, fast: 150, turbo: 15 };
+const SPEED_FACTOR: Record<Speed, number> = { slow: 1.8, normal: 1, fast: 0.45, turbo: 0 };
+/** Tak dlouho po začátku scény se klik ignoruje, ať ji hráč neodklikne omylem naslepo. */
+const DISMISS_GUARD_MS = 300;
+const SPEED_LABEL: Record<Speed, string> = {
+  slow: cs.game.speedSlow,
+  normal: cs.game.speedNormal,
+  fast: cs.game.speedFast,
+  turbo: cs.game.speedTurbo,
+};
 /** Tak dlouho má nová otázka třídu s animací příchodu. */
 const ENTER_MS = 400;
 
@@ -109,6 +117,7 @@ export class GameScreen {
   /** Do které události už smí město dojet. */
   private revealedSeq: number;
   private rolling = false;
+  private beatStartedAt = 0;
   private selectedTile: TileId | null = null;
   private draft: TradeDraft | null = null;
   private panel: Panel = null;
@@ -331,11 +340,8 @@ export class GameScreen {
     if (beat.kind === 'toast') {
       this.stage.show(beat, 1, false);
     } else {
-      this.stage.show(
-        beat,
-        this.scaled('ms' in beat ? beat.ms : 0),
-        this.role === 'solo' || beat.player === this.me,
-      );
+      this.beatStartedAt = performance.now();
+      this.stage.show(beat, this.scaled('ms' in beat ? beat.ms : 0), waitsForClick(beat));
     }
     this.render();
   }
@@ -344,14 +350,22 @@ export class GameScreen {
     return Math.round(ms * SPEED_FACTOR[this.speed]);
   }
 
-  private beatMs(beat: Beat, backlog: number): number {
+  private beatMs(beat: Beat, backlog: number): number | 'hold' {
     if (beat.kind === 'drive') {
       if (this.speed === 'turbo') return 0;
       return this.view ? this.view.remainingMs + 150 : this.scaled(450);
     }
     if (!('ms' in beat)) return 0;
+    // Turbo scény přeskakuje úplně, jinak karta a postavy čekají na klik každého hráče zvlášť.
+    if (this.speed === 'turbo') return 0;
+    if (waitsForClick(beat)) return 'hold';
     // Když se fronta plní rychleji, než se přehrává, scény se zkracují, ať hra neutíká.
     return Math.round(this.scaled(beat.ms) * (backlog > 1 ? 0.5 : 1));
+  }
+
+  private dismissBeat(): void {
+    if (performance.now() - this.beatStartedAt < DISMISS_GUARD_MS) return;
+    this.director.skip();
   }
 
   private patch(el: HTMLElement, html: string): void {
@@ -440,16 +454,10 @@ export class GameScreen {
       this.selectedTile === null
         ? ''
         : `<div class="tile-detail">${this.renderDeed(s, this.selectedTile, true)}</div>`;
-    const speeds = (['normal', 'fast', 'turbo'] as const)
+    const speeds = (['slow', 'normal', 'fast', 'turbo'] as const)
       .map(
         (speed) =>
-          `<button class="chip${speed === this.speed ? ' on' : ''}" data-action="speed" data-speed="${speed}">${
-            speed === 'normal'
-              ? cs.game.speedNormal
-              : speed === 'fast'
-                ? cs.game.speedFast
-                : cs.game.speedTurbo
-          }</button>`,
+          `<button class="chip${speed === this.speed ? ' on' : ''}" data-action="speed" data-speed="${speed}">${SPEED_LABEL[speed]}</button>`,
       )
       .join('');
     // Tempo je jen pro sólo: u společného stolu by ho jeden hráč vnutil ostatním.
@@ -562,7 +570,7 @@ export class GameScreen {
       decision.deed !== undefined || decision.character || decision.prompt
         ? `<div class="decision${fresh ? ' enter' : ''}">
              ${decision.character ? `<div class="decision-char">${character(decision.character)}</div>` : ''}
-             ${decision.prompt ? `<p class="bubble still${decision.tone === 'wait' ? ' quiet' : ''}"${decision.tip ? ` data-tip="${decision.tip}"` : ''}>${decision.prompt}</p>` : ''}
+             ${decision.prompt ? `<div class="bubble still${decision.tone === 'wait' ? ' quiet' : ''}"${decision.tip ? ` data-tip="${decision.tip}"` : ''}>${decision.prompt}</div>` : ''}
              ${decision.deed !== undefined ? this.renderDeed(s, decision.deed, false) : ''}
            </div>`
         : '';
@@ -871,10 +879,10 @@ export class GameScreen {
     return {
       key: `trade${offer.from}`,
       prompt: `${cs.game.tradeIncoming(escapeHtml(s.players[offer.from]!.name))}
-        <span class="trade-summary">
-          <span><strong>${cs.game.tradeYouGet}</strong>${this.describeSide(offer.give)}</span>
-          <span><strong>${cs.game.tradeYouGive}</strong>${this.describeSide(offer.get)}</span>
-        </span>`,
+        <div class="trade-summary">
+          <div><strong>${cs.game.tradeYouGet}</strong>${this.describeSide(offer.give)}</div>
+          <div><strong>${cs.game.tradeYouGive}</strong>${this.describeSide(offer.get)}</div>
+        </div>`,
       actions: [
         act(cs.game.tradeAccept, 'acceptTrade', { kind: 'go', icon: 'check' }),
         act(cs.game.tradeReject, 'rejectTrade', { kind: 'plain', icon: 'x', primary: true }),
@@ -1142,7 +1150,7 @@ export class GameScreen {
       event.preventDefault();
       event.stopPropagation();
     }
-    if (skipping && !event.repeat) this.director.skip();
+    if (skipping && !event.repeat) this.dismissBeat();
   }
 
   private onClick(event: MouseEvent): void {
@@ -1211,7 +1219,7 @@ export class GameScreen {
         this.send({ type: action, player, group: el.dataset.group as GroupId });
         return;
       case 'skipBeat':
-        this.director.skip();
+        this.dismissBeat();
         return;
       case 'openMarket':
         this.panel = 'market';
