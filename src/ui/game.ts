@@ -49,6 +49,7 @@ import { cs, formatMoney } from '../i18n/cs';
 import { BotRunner } from '../bots/runner';
 import type { GameTransport } from '../net/transport';
 import { publishGameEnd, summarizeGame } from '../profile/profile';
+import { chaseMinigame } from '../minigames/chase';
 import { CityView } from '../render/city-view';
 import { footText } from '../render/tile-info';
 import { PLAYER_COLORS, renderBoard, shortTileName, tileColor } from './board';
@@ -86,6 +87,9 @@ export class GameScreen {
   private businessOpen = false;
   private speed: Speed = 'normal';
   private endPublished = false;
+  /** Honička tohoto hráče právě běží, nebo se čeká, až hostitel potvrdí výsledek. */
+  private chaseRunning = false;
+  private readonly minigameAbort = new AbortController();
   private readonly lines: { text: string; cls: string; color: string }[] = [];
   private lastSeq = 0;
   /** `null` znamená 2D desku: režim Klasika, nebo prohlížeč bez WebGL. */
@@ -118,6 +122,7 @@ export class GameScreen {
   }
 
   stop(): void {
+    this.minigameAbort.abort();
     this.unsubscribe();
     this.bots?.stop();
     this.view?.dispose();
@@ -254,6 +259,39 @@ export class GameScreen {
       ${s.phase === 'gameOver' ? this.renderResult(s) : ''}`;
     const log = this.ui.querySelector<HTMLElement>('.log');
     if (log) log.scrollTop = focus;
+    this.syncChase(s);
+  }
+
+  /** Spustí honičku, když má ujíždět tento člověk a jeho auto už dojelo. */
+  private syncChase(s: GameState): void {
+    if (s.phase !== 'chase') {
+      this.chaseRunning = false;
+      return;
+    }
+    const mine = s.active === this.me && !s.players[this.me]?.bot;
+    if (!mine || this.chaseRunning || this.view?.busy) return;
+    this.chaseRunning = true;
+    const input = {
+      player: this.me,
+      seed: (s.rng ^ s.turn) | 0,
+      color: PLAYER_COLORS[this.me] ?? '#ffffff',
+    };
+    this.view?.setPaused(true);
+    chaseMinigame
+      .start({ host: this.root, input, signal: this.minigameAbort.signal })
+      .then(
+        (result) => chaseMinigame.resultAction(input, result),
+        (error: unknown) => {
+          console.warn('Honička nejde spustit, rozhodne náhoda.', error);
+          return chaseMinigame.autoResolve(input);
+        },
+      )
+      .then((action) => {
+        if (this.minigameAbort.signal.aborted) return;
+        this.view?.setPaused(false);
+        this.send(action);
+      })
+      .catch((error: unknown) => console.warn('Výsledek honičky nejde zapsat.', error));
   }
 
   private renderDie(value: number): string {
@@ -391,7 +429,9 @@ export class GameScreen {
       return `<p>${cs.game.tradeWaiting(escapeHtml(s.players[s.trade.to]!.name))}</p>`;
     }
     if (actor !== this.me) {
-      return `${s.auction ? this.renderAuctionInfo(s) : ''}<p class="waiting">${cs.game.waiting(escapeHtml(s.players[actor ?? 0]!.name))}</p>`;
+      const actorName = escapeHtml(s.players[actor ?? 0]!.name);
+      if (s.phase === 'chase') return `<p class="waiting">${cs.chase.running(actorName)}</p>`;
+      return `${s.auction ? this.renderAuctionInfo(s) : ''}<p class="waiting">${cs.game.waiting(actorName)}</p>`;
     }
     // Volby čekají, až auto dojede, ať je vidět, kde hráč vlastně stojí.
     if (this.view?.busy) return `<p class="waiting">${cs.game.driving}</p>`;
@@ -418,6 +458,9 @@ export class GameScreen {
         ${this.tradeButton(s)}`;
     }
     if (s.phase === 'awaitTax' && s.pendingTax) return this.renderTax(s, s.pendingTax);
+    if (s.phase === 'awaitRent' && s.pendingRent) return this.renderRent(s, s.pendingRent);
+    if (s.phase === 'chase')
+      return `<p class="waiting">${cs.chase.running(escapeHtml(me.name))}</p>`;
     if (s.phase === 'awaitRoll') {
       const jail = me.inJail
         ? `${button(cs.game.payBail(formatMoney(JAIL_BAIL)), 'payBail', me.cash < JAIL_BAIL ? 'disabled' : '')}
@@ -443,6 +486,17 @@ export class GameScreen {
       bribeRiskPct(s, this.me, rules),
     );
     return button(label, 'bribePolice');
+  }
+
+  private renderRent(s: GameState, rent: NonNullable<GameState['pendingRent']>): string {
+    const owner = escapeHtml(s.players[rent.owner]!.name);
+    const factor = BUSINESS?.chase.caughtRentFactor ?? 2;
+    return `
+      <h3>${cs.chase.rentTitle}</h3>
+      <p>${cs.chase.rentText(cs.tiles[rent.tile] ?? '', owner, formatMoney(rent.amount))}</p>
+      ${button(cs.chase.payRent(formatMoney(rent.amount)), 'payRent', '', true)}
+      ${button(cs.chase.flee(formatMoney(rent.amount * factor)), 'flee')}
+      <small>${cs.chase.fleeNote(BUSINESS?.chase.cooldownRounds ?? 0)}</small>`;
   }
 
   private renderTax(s: GameState, tax: NonNullable<GameState['pendingTax']>): string {
@@ -895,6 +949,8 @@ export class GameScreen {
       case 'rejectTrade':
       case 'settleDebt':
       case 'endTurn':
+      case 'payRent':
+      case 'flee':
       case 'payTax':
       case 'bribeOfficial':
       case 'bribePolice':

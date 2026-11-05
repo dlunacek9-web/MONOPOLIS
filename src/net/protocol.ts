@@ -3,7 +3,7 @@ import type { Action, GameState, GroupId, PlayerId, TileId, TradeSide } from '..
 import type { MatchOptions } from './match';
 
 /** Zvyš při každé nekompatibilní změně zpráv, ať se nepotkají různé verze hry. */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const MAX_NAME_LENGTH = 20;
 
 export type SeatKind = 'host' | 'guest' | 'bot';
@@ -79,7 +79,14 @@ function parseAction(value: unknown): Action | null {
     case 'payTax':
     case 'bribeOfficial':
     case 'bribePolice':
+    case 'payRent':
+    case 'flee':
+    case 'chaseSkip':
       return { type: value.type, player };
+    case 'chaseResult':
+      return typeof value.escaped === 'boolean'
+        ? { type: 'chaseResult', player, escaped: value.escaped }
+        : null;
     case 'bid':
       return isCount(value.amount) ? { type: 'bid', player, amount: value.amount } : null;
     case 'build':

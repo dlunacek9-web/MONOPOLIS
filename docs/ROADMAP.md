@@ -48,8 +48,8 @@ Pořadí fází: 2 → 3 → 4 → 5 a dál. Multiplayer jde před byznysovou vr
 
 ## Fáze 5 — Framework miniher a honička autem
 
-- [ ] Společné rozhraní miniher, AI a lidský controller, auto-resolve
-- [ ] Rapier a honička autem
+- [x] Společné rozhraní miniher, AI a lidský controller, auto-resolve
+- [x] Rapier a honička autem
 
 ## Fáze 6 — Útěk z vězení, live aukce a vyjednávání
 

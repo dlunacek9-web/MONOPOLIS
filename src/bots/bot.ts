@@ -379,6 +379,17 @@ function chooseTax(s: GameState, me: PlayerId): Action {
   return { type: 'payTax', player: me };
 }
 
+/** Ujíždí podle povahy, malý nájem za riziko nestojí. Kdo nemá na zaplacení, nemá co ztratit. */
+function chooseRent(s: GameState, me: PlayerId): Action {
+  const amount = s.pendingRent?.amount ?? 0;
+  const cash = playerOf(s, me).cash;
+  const desperate = cash < amount;
+  const safe = cash >= amount * (BUSINESS?.chase.caughtRentFactor ?? 2);
+  const worthIt = amount >= 20 * MONEY_UNIT;
+  const flees = desperate || (safe && worthIt && dares(s, me, 6, botOf(s, me).traits.crime));
+  return { type: flees ? 'flee' : 'payRent', player: me };
+}
+
 function choosePoliceBribe(s: GameState, me: PlayerId): Action | null {
   if (!BUSINESS || !canBribePolice(s, me)) return null;
   const rules = BUSINESS.police;
@@ -441,6 +452,9 @@ export function chooseBotAction(s: GameState, me: PlayerId): Action {
   if (s.auction) return chooseBid(s, me);
   if (s.phase === 'awaitBuy') return chooseBuy(s, me);
   if (s.phase === 'awaitTax') return chooseTax(s, me);
+  if (s.phase === 'awaitRent') return chooseRent(s, me);
+  // Bot se nehraje, stejně jako když člověk honičku přeskočí.
+  if (s.phase === 'chase') return { type: 'chaseSkip', player: me };
   if (s.phase === 'awaitRoll') return chooseRollPhase(s, me);
   return manage(s, me) ?? chooseBusiness(s, me) ?? { type: 'endTurn', player: me };
 }

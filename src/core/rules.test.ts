@@ -29,6 +29,8 @@ function game(players = 2, win: WinCondition = CLASSIC.win): GameState {
   const s = createGame({ mode: 'nextlevel', win }, setups, 42);
   s.active = 0;
   s.firstPlayer = 0;
+  // Tyhle testy řeší samotný nájem, honičku mají vlastní soubor.
+  for (const p of s.players) p.nextChaseRound = 9999;
   return s;
 }
 

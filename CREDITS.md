@@ -8,7 +8,8 @@ Každý asset ve hře musí být tady zapsaný se zdrojem a licencí. Povolené 
 
 ## Knihovny
 
-| Knihovna | Zdroj                             | Licence |
-| -------- | --------------------------------- | ------- |
-| Three.js | https://threejs.org               | MIT     |
-| Trystero | https://github.com/dmotz/trystero | MIT     |
+| Knihovna | Zdroj                             | Licence    |
+| -------- | --------------------------------- | ---------- |
+| Three.js | https://threejs.org               | MIT        |
+| Trystero | https://github.com/dmotz/trystero | MIT        |
+| Rapier   | https://rapier.rs                 | Apache-2.0 |

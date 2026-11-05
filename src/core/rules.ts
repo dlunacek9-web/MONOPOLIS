@@ -40,7 +40,7 @@ export function actorOf(s: GameState): PlayerId | null {
 
 /** Spravovat majetek lze na vlastním tahu nebo během vlastního dluhu. */
 export function canManage(s: GameState, player: PlayerId): boolean {
-  if (s.trade || s.auction || s.phase === 'gameOver') return false;
+  if (s.trade || s.auction || s.phase === 'gameOver' || s.phase === 'chase') return false;
   return actorOf(s) === player && !playerOf(s, player).bankrupt;
 }
 
@@ -183,6 +183,8 @@ export function isValidTrade(s: GameState, offer: TradeOffer): boolean {
 }
 
 export function canProposeTrade(s: GameState, player: PlayerId): boolean {
+  // Během rozhodování o nájmu by obchod mohl změnit majitele pozemku, o který jde.
+  if (s.phase === 'awaitRent') return false;
   return canManage(s, player) && s.tradesThisTurn < MAX_TRADES_PER_TURN;
 }
 

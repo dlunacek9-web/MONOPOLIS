@@ -121,6 +121,7 @@ export function createGame(
       dirty: 0,
       shares: {},
       archetype: BUSINESS ? (setup.archetype ?? null) : null,
+      nextChaseRound: 0,
     })),
     deeds,
     phase: 'awaitRoll',
@@ -147,6 +148,7 @@ export function createGame(
     market: createMarket(),
     launderedTiles: [],
     pendingTax: null,
+    pendingRent: null,
   };
   s.decks.tip = shuffle(
     s,
@@ -244,15 +246,42 @@ function landOnOwnable(s: GameState, player: PlayerId, tile: TileId, rule: RentR
     amount = rentOf(s, tile, dice[0] + dice[1]);
     if (rule.kind === 'double') amount *= 2;
   }
-  emit(s, { type: 'rent', player, owner: deed.owner, tile, amount });
-  if (!s.stats.biggestRent || amount > s.stats.biggestRent.amount) {
-    s.stats.biggestRent = { player: deed.owner, amount };
-  }
-  if (BUSINESS && deed.offBooks) {
-    collectBlackRent(s, player, deed.owner, tile, amount);
+  if (BUSINESS && amount > 0 && s.round >= playerOf(s, player).nextChaseRound) {
+    // V byznysové vrstvě se hráč nejdřív rozhodne, jestli zaplatí, nebo ujede.
+    s.phase = 'awaitRent';
+    s.pendingRent = { tile, owner: deed.owner, amount };
     return;
   }
-  charge(s, player, deed.owner, amount);
+  chargeRent(s, player, deed.owner, tile, amount);
+}
+
+function chargeRent(
+  s: GameState,
+  player: PlayerId,
+  owner: PlayerId,
+  tile: TileId,
+  amount: number,
+): void {
+  emit(s, { type: 'rent', player, owner, tile, amount });
+  if (!s.stats.biggestRent || amount > s.stats.biggestRent.amount) {
+    s.stats.biggestRent = { player: owner, amount };
+  }
+  if (BUSINESS && deedOf(s, tile).offBooks) {
+    collectBlackRent(s, player, owner, tile, amount);
+    return;
+  }
+  charge(s, player, owner, amount);
+}
+
+/** Konec honičky. Chycený platí násobek nájmu a jde do vazby. */
+function finishChase(s: GameState, player: PlayerId, escaped: boolean): void {
+  const { tile, owner, amount } = s.pendingRent!;
+  s.pendingRent = null;
+  s.phase = 'awaitEnd';
+  emit(s, { type: 'chaseEnd', player, owner, tile, escaped });
+  if (escaped) return;
+  chargeRent(s, player, owner, tile, amount * BUSINESS!.chase.caughtRentFactor);
+  sendToJail(s, player);
 }
 
 /** Nájem na ruku: nájemník platí nejdřív černými, majitel dostane vše v černých i s přirážkou. */
@@ -573,6 +602,7 @@ function finishGame(s: GameState, winner: PlayerId): void {
   s.pendingAuctions = [];
   s.pendingBuy = null;
   s.pendingTax = null;
+  s.pendingRent = null;
   emit(s, { type: 'gameOver', winner });
 }
 
@@ -602,6 +632,7 @@ function nextTurn(s: GameState): void {
   s.tradesThisTurn = 0;
   s.launderedTiles = [];
   s.pendingTax = null;
+  s.pendingRent = null;
   if (s.settings.win.type === 'richestAfterRounds' && s.round > s.settings.win.rounds) {
     finishGame(s, richestPlayer(s));
     return;
@@ -984,6 +1015,35 @@ function apply(s: GameState, action: Action): void {
       emit(s, { ...sharesEvent(action, sharePrice(s, action.group)), buy: false });
       break;
     }
+    case 'payRent': {
+      requirePlainTurn(s, player);
+      if (s.phase !== 'awaitRent' || !s.pendingRent) illegal('Není co platit');
+      const { tile, owner, amount } = s.pendingRent;
+      s.pendingRent = null;
+      s.phase = 'awaitEnd';
+      chargeRent(s, player, owner, tile, amount);
+      break;
+    }
+    case 'flee': {
+      requirePlainTurn(s, player);
+      if (s.phase !== 'awaitRent' || !s.pendingRent || !BUSINESS) illegal('Teď se nedá ujet');
+      p.nextChaseRound = s.round + BUSINESS.chase.cooldownRounds;
+      s.phase = 'chase';
+      const { tile, owner } = s.pendingRent;
+      emit(s, { type: 'chaseStart', player, owner, tile });
+      break;
+    }
+    case 'chaseResult':
+      requirePlainTurn(s, player);
+      if (s.phase !== 'chase') illegal('Neběží honička');
+      if (typeof action.escaped !== 'boolean') illegal('Neplatný výsledek');
+      finishChase(s, player, action.escaped);
+      break;
+    case 'chaseSkip':
+      requirePlainTurn(s, player);
+      if (s.phase !== 'chase' || !BUSINESS) illegal('Neběží honička');
+      finishChase(s, player, randomInt(s, 100) < BUSINESS.chase.autoEscapePct);
+      break;
     case 'pumpDump': {
       if (!canPumpDump(s, player, action.group) || !BUSINESS) illegal('Pump & dump teď nejde');
       p.dirty -= BUSINESS.pump.cost;
