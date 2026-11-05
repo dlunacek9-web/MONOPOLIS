@@ -29,6 +29,7 @@ export class HostSession {
   private readonly guests: Guest[] = [];
   private transport: LocalTransport | null = null;
   private unsubscribe: (() => void) | null = null;
+  private unsubscribeAck: (() => void) | null = null;
   private rev = 0;
   private changeListener: (() => void) | null = null;
 
@@ -88,6 +89,9 @@ export class HostSession {
     const transport = new LocalTransport(state);
     this.transport = transport;
     this.unsubscribe = transport.subscribe((next) => this.broadcastGame(next));
+    this.unsubscribeAck = transport.onAcknowledge((player, seq) =>
+      this.send({ type: 'ack', player, seq }),
+    );
     this.broadcastGame(state);
     return transport;
   }
@@ -122,6 +126,8 @@ export class HostSession {
   private endGameSubscription(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.unsubscribeAck?.();
+    this.unsubscribeAck = null;
   }
 
   private clearTimer(guest: Guest): void {
@@ -157,7 +163,10 @@ export class HostSession {
     const guest = this.guests.find((candidate) => candidate.peerId === peerId);
     if (!guest || !this.transport) return;
     if (message.type === 'claim') this.onClaim(guest, message.player);
-    else this.onAction(guest, message);
+    else if (message.type === 'ack') {
+      // Odklikává jen sám za sebe: místo u stolu zná hostitel, ne odesílatel.
+      if (guest.seat !== null) this.transport.acknowledge(guest.seat, message.seq);
+    } else this.onAction(guest, message);
   }
 
   private onHello(message: Extract<GuestMessage, { type: 'hello' }>, peerId: string): void {

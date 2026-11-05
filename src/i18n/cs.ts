@@ -357,6 +357,7 @@ export const cs = {
     skip: 'Mezerník nebo klik: přeskočit',
     continue: 'Pokračovat',
     continueKey: 'mezerník',
+    waitingClick: (name: string) => `Čeká se, až to odklikne ${name}…`,
     riskTip: (pct: number) => `Riziko odhalení: ${pct} %`,
     prompt: {
       roll: 'Jsi na řadě. Hoď a uvidíme.',
