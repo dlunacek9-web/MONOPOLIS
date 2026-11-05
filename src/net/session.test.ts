@@ -244,6 +244,9 @@ describe('multiplayer: partie', () => {
       }),
     ).toBeNull();
     expect(
+      parseGuestMessage({ type: 'action', action: { type: 'auctionGavel', player: 1 } }),
+    ).toBeNull();
+    expect(
       parseGuestMessage({ type: 'action', action: { type: 'build', player: 1, tile: 999 } }),
     ).toBeNull();
     expect(
@@ -367,6 +370,11 @@ describe('multiplayer: partie', () => {
     const transport = host.startGame(11);
     for (let i = 0; i < 20_000 && transport.getState().phase !== 'gameOver'; i++) {
       const state = transport.getState();
+      // V živé dražbě nikdo nepřihazuje a rozhodne kladívko hostitele.
+      if (state.auction?.live) {
+        transport.dispatch({ type: 'auctionGavel', player: state.auction.bidders[0]! });
+        continue;
+      }
       const actor = actorState(state);
       const action = chooseBotAction(state, actor);
       if (actor === 1) anna.dispatch(action);

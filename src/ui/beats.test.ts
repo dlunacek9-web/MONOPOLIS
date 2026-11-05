@@ -88,7 +88,7 @@ describe('scény z událostí', () => {
       game('classic'),
       events(
         { type: 'jail', player: 0 },
-        { type: 'auctionStart', tile: 1 },
+        { type: 'auctionStart', tile: 1, live: false },
         { type: 'bankrupt', player: 0, creditor: null },
       ),
       0,

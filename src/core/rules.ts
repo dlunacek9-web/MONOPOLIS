@@ -28,13 +28,16 @@ export function playerOf(s: GameState, id: PlayerId) {
   return player;
 }
 
-/** Kdo musí teď jednat. Obchod má přednost před dluhem, dluh před dražbou a ta před tahem. */
+/**
+ * Kdo musí teď jednat. Obchod má přednost před dluhem, dluh před dražbou a ta před tahem.
+ * V živé dražbě není na řadě nikdo, přihazovat smí všichni najednou.
+ */
 export function actorOf(s: GameState): PlayerId | null {
   if (s.phase === 'gameOver') return null;
   if (s.trade) return s.trade.to;
   const debt = s.debts[0];
   if (debt) return debt.player;
-  if (s.auction) return s.auction.bidders[s.auction.index] ?? null;
+  if (s.auction) return s.auction.live ? null : (s.auction.bidders[s.auction.index] ?? null);
   return s.active;
 }
 
@@ -152,6 +155,9 @@ export function canUnmortgage(s: GameState, player: PlayerId, tile: TileId): boo
     deed.owner === player && deed.mortgaged && playerOf(s, player).cash >= unmortgageCost(tile)
   );
 }
+
+/** Po kolika klepnutích bez příhozu kladívko dražbu ukončí: poprvé, podruhé, potřetí. */
+export const GAVEL_KNOCKS = 3;
 
 export function minBid(s: GameState): number {
   return s.auction ? s.auction.bid + MIN_BID_STEP : MIN_BID_STEP;

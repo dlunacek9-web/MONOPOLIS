@@ -19,6 +19,6 @@ export interface Minigame<Input, Result> {
   start(context: MinigameContext<Input>): Promise<Result>;
   /** Akce, která rozhodne minihru bez hraní. Náhodu řeší seedovaný generátor v pravidlech. */
   autoResolve(input: Input): Action;
-  /** Akce, která do pravidel zapíše výsledek odehrané minihry. */
-  resultAction(input: Input, result: Result): Action;
+  /** Akce, která do pravidel zapíše výsledek. `null`, když minihra hrála přes akce průběžně. */
+  resultAction(input: Input, result: Result): Action | null;
 }

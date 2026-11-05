@@ -193,7 +193,7 @@ Délka podle důležitosti: běžné situace (honička, útěk z vězení) jsou 
 | -------------------- | ------------------------- | ----------------------------------------------- | -------------------- |
 | Honička autem        | Cizí pozemek, místo nájmu | Ujedeš: neplatíš. Chytí tě: dvojnásobek a vazba | Šance na útěk 45 %   |
 | Útěk z vězení        | Ve vazbě, místo hodu      | Ven zdarma, nebo pokuta a tah ve vězení         | Šance 40 %           |
-| Live aukce           | Odmítnutá koupě           | Pozemek za nejvyšší příhoz                      | Tahová dražba        |
+| Živá dražba          | Odmítnutá koupě, bankrot  | Pozemek za nejvyšší příhoz                      | Tahová dražba        |
 | Tower defense hotelu | Heist na hotel            | Obrana, nebo ztráta peněz                       | 50 % ± rozdíl úrovní |
 
 ### Honička autem
@@ -220,6 +220,18 @@ Jen v režimu Next level. Ve vazbě může hráč místo hodu, kauce nebo úplat
 - **Boti a přeskočení:** bot se nehraje, rozhodne `autoResolve()` se šancí 40 %. Člověk může útěk přeskočit před startem za stejných podmínek. Bot to zkouší podle ochoty ke zločinu, jen když si může dovolit pokutu.
 - **Multiplayer:** útěk počítá jen počítač utíkajícího hráče a ostatní dostanou výsledek.
 - **Vzhled:** stejný low-poly jazyk, ale noční scéna, aby vynikly reflektory.
+
+### Živá dražba
+
+Jen v režimu Next level a jen když v dražbě sedí aspoň jeden člověk. Samotní boti a Klasika draží po řadě jako dřív.
+
+- **Průběh:** přihazují všichni najednou, kdykoli a bez pořadí. Kdo vede, nesmí přihodit ani pasovat.
+- **Kladívko:** bez příhozu klepne poprvé, podruhé a potřetí a pak je prodáno. Na první příhoz je 5 s, mezi klepnutími 2,5 s. Každý příhoz vrací kladívko na začátek.
+- **Pas:** je volitelný a nevratný. Stačí i čekat. Když pasuje poslední člověk, zbytek dohrají boti po řadě bez obrazovky.
+- **Ovládání:** mezerník nejnižší příhoz, W a E větší příhozy, Q pas. Všechno jde i myší.
+- **Boti blafují:** někteří přihazují až o 40 % nad svou cenu a riskují, že předražený pozemek zaplatí. Někteří po přeplacení jen mlčí, takže nejde poznat, jestli skončili, nebo číhají. Číhající bot přihodí až po klepnutí kladívka a občas přihodí velkým skokem. Bluf i řeči v bublinách vycházejí jen z veřejného stavu, bot nemá žádnou výhodu.
+- **Časovač:** pravidla žádný čas neznají. Hodiny běží u hostitele a klepnutí je běžná akce, kterou hosté poslat nemohou.
+- **Vzhled:** dražební síň ve stejném low-poly jazyce, bez 3D běží jen s panely.
 
 ## 9. Progrese
 

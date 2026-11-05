@@ -3,7 +3,7 @@ import type { Action, GameState, GroupId, PlayerId, TileId, TradeSide } from '..
 import type { MatchOptions } from './match';
 
 /** Zvyš při každé nekompatibilní změně zpráv, ať se nepotkají různé verze hry. */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 export const MAX_NAME_LENGTH = 20;
 
 export type SeatKind = 'host' | 'guest' | 'bot';
@@ -64,6 +64,7 @@ function parseSide(value: unknown): TradeSide | null {
 /**
  * Zpráva od hosta může být cokoli, proto se skládá znovu jen z ověřených polí.
  * `setController` tu záměrně chybí: o místech u stolu rozhoduje jen hostitel.
+ * `auctionGavel` taky: kladívko je časovač hostitele, jinak by si dražbu ukončil kdokoli.
  */
 function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || !isCount(value.player)) return null;

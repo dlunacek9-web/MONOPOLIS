@@ -144,7 +144,10 @@ describe('koupě, dražba, nájem', () => {
     expect(s.phase).toBe('awaitEnd');
   });
   it('po odmítnutí se draží a vyhrává nejvyšší příhoz', () => {
-    let s = rollTo(game(3), 1, 2);
+    // Samotní boti draží po řadě, živou dražbu s lidmi pokrývá auction.test.ts.
+    const bots = game(3);
+    for (const p of bots.players) p.bot = { personality: 'vyvazeny', difficulty: 'normal' };
+    let s = rollTo(bots, 1, 2);
     s = reduce(s, { type: 'decline', player: 0 });
     expect(actorOf(s)).toBe(1);
     expect(() => reduce(s, { type: 'bid', player: 1, amount: 5_000 })).toThrow(IllegalActionError);

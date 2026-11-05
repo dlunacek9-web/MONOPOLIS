@@ -242,6 +242,11 @@ export function beatsFor(s: GameState, events: readonly GameEvent[], me: PlayerI
         else beats.push({ ...base, kind: 'note' });
         break;
       case 'auctionStart':
+        // Živá dražba má vlastní obrazovku a její hodiny už běží.
+        if (e.live) {
+          beats.push({ ...base, kind: 'note' });
+          break;
+        }
         beats.push(
           nextLevel
             ? scene('auction', 'auctioneer', [pick(cs.scene.auction, e.seq)], null, 'gavel')

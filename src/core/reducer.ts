@@ -28,6 +28,7 @@ import {
   canPumpDump,
   canSellShares,
   canSetOffBooks,
+  hasBusiness,
   launderFine,
   launderNet,
   launderRiskPct,
@@ -40,6 +41,7 @@ import { CARDS, cardEffect } from './cards';
 import { useRuleset } from './ruleset';
 import { randomInt, rollDice, shuffle } from './rng';
 import {
+  GAVEL_KNOCKS,
   actorOf,
   buildCost,
   canBuild,
@@ -60,6 +62,7 @@ import {
 } from './rules';
 import type {
   Action,
+  Auction,
   BustReason,
   DeckId,
   Deed,
@@ -524,8 +527,27 @@ function startAuction(s: GameState, tile: TileId): void {
     const p = s.players[(s.active + i) % count]!;
     if (!p.bankrupt) bidders.push(p.id);
   }
-  s.auction = { tile, bid: 0, leader: null, bidders, index: 0 };
-  emit(s, { type: 'auctionStart', tile });
+  // Samotní boti se nemají před kým předvádět, ti dál draží po řadě.
+  const live = hasBusiness(s) && bidders.some((id) => playerOf(s, id).bot === null);
+  s.auction = { tile, bid: 0, leader: null, bidders, index: 0, live, gavel: 0 };
+  emit(s, { type: 'auctionStart', tile, live });
+}
+
+/** Běží dražba, do které může hráč zasáhnout? Vrací ji, jinak je akce neplatná. */
+function requireBidder(s: GameState, player: PlayerId): Auction {
+  const auction = s.auction;
+  if (!auction || s.trade || s.debts.length > 0) illegal('Neběží dražba');
+  if (!auction.live) requireActor(s, player);
+  else if (!auction.bidders.includes(player)) illegal('Hráč už nedraží');
+  else if (auction.leader === player) illegal('Hráč vede dražbu');
+  return auction;
+}
+
+/** Odešel poslední člověk: zbytek živé dražby dohrají boti po řadě, nikdo se na to nedívá. */
+function endLiveIfNoHuman(s: GameState, auction: Auction): void {
+  if (!auction.live || auction.bidders.some((id) => playerOf(s, id).bot === null)) return;
+  auction.live = false;
+  auction.index = auction.bidders.findIndex((id) => id !== auction.leader);
 }
 
 function finishAuction(s: GameState): void {
@@ -811,27 +833,33 @@ function apply(s: GameState, action: Action): void {
       break;
     }
     case 'bid': {
-      requireActor(s, player);
-      const auction = s.auction;
-      if (!auction || s.trade || s.debts.length > 0) illegal('Neběží dražba');
+      const auction = requireBidder(s, player);
       if (!Number.isInteger(action.amount)) illegal('Neplatný příhoz');
       if (action.amount < minBid(s) || action.amount > p.cash) illegal('Neplatný příhoz');
       auction.bid = action.amount;
       auction.leader = player;
+      auction.gavel = 0;
       emit(s, { type: 'bid', player, amount: action.amount });
       auction.index = (auction.index + 1) % auction.bidders.length;
       if (auction.bidders.length === 1) finishAuction(s);
       break;
     }
     case 'passBid': {
-      requireActor(s, player);
-      const auction = s.auction;
-      if (!auction || s.trade || s.debts.length > 0) illegal('Neběží dražba');
-      auction.bidders.splice(auction.index, 1);
+      const auction = requireBidder(s, player);
+      const seat = auction.live ? auction.bidders.indexOf(player) : auction.index;
+      auction.bidders.splice(seat, 1);
       emit(s, { type: 'passBid', player });
       if (auction.index >= auction.bidders.length) auction.index = 0;
       const onlyLeaderLeft = auction.bidders.length === 1 && auction.bidders[0] === auction.leader;
       if (auction.bidders.length === 0 || onlyLeaderLeft) finishAuction(s);
+      else endLiveIfNoHuman(s, auction);
+      break;
+    }
+    case 'auctionGavel': {
+      const auction = s.auction;
+      if (!auction?.live) illegal('Neběží živá dražba');
+      auction.gavel += 1;
+      if (auction.gavel >= GAVEL_KNOCKS) finishAuction(s);
       break;
     }
     case 'build': {
