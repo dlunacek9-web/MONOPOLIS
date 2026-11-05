@@ -14,48 +14,47 @@ import {
   canBribeOfficial,
   canBribePolice,
   canBuild,
-  canBuyShares,
-  canLaunder,
   canMortgage,
   canProposeTrade,
-  canPumpDump,
   canSellBuilding,
-  canSellShares,
-  canSetOffBooks,
   canUnmortgage,
   hasBuildingsInGroup,
   hasBusiness,
-  holdingOf,
   isValidTrade,
-  launderFeePct,
-  launderLimit,
-  launderNet,
-  launderRiskPct,
   minBid,
   mortgageValue,
   netWorth,
   ownablePrice,
   ownsWholeGroup,
-  pumpOn,
-  sharePrice,
   groupTiles,
   tilesOfKind,
   tileAt,
   tilesOwnedBy,
   unmortgageCost,
 } from '../core';
-import type { Action, GameEvent, GameState, GroupId, PlayerId, TileId, TradeSide } from '../core';
-import { cs, formatMoney } from '../i18n/cs';
+import type { Action, GameState, GroupId, PlayerId, TileId, TradeSide } from '../core';
+import { cs, formatMoney, formatMoneyShort } from '../i18n/cs';
 import { BotRunner } from '../bots/runner';
 import type { GameTransport } from '../net/transport';
 import { publishGameEnd, summarizeGame } from '../profile/profile';
 import { chaseMinigame } from '../minigames/chase';
+import type { Minigame } from '../minigames/types';
 import { CityView } from '../render/city-view';
 import { footText } from '../render/tile-info';
+import { renderBackroom } from './backroom';
+import { beatsFor } from './beats';
+import type { Beat } from './beats';
 import { PLAYER_COLORS, renderBoard, shortTileName, tileColor } from './board';
+import { act } from './buttons';
+import { character } from './characters';
+import type { CharacterId } from './characters';
+import { Director } from './director';
 import { applyMode } from './mode';
 import { escapeHtml } from './html';
-import { formatEvent, quipFor } from './log';
+import { icon } from './icons';
+import { formatEvent } from './log';
+import { PriceHistory, renderMarket } from './market';
+import { Stage, dieFace } from './stage';
 
 interface TradeDraft {
   to: PlayerId;
@@ -67,7 +66,27 @@ interface TradeDraft {
 export type GameRole = 'solo' | 'host' | 'guest';
 
 type Speed = 'normal' | 'fast' | 'turbo';
-const SPEED_MS: Record<Speed, number> = { normal: 900, fast: 200, turbo: 15 };
+type Panel = 'market' | 'backroom' | null;
+
+/** Pauza bota před dalším tahem. Délku scén k tomu řídí režisér. */
+const SPEED_MS: Record<Speed, number> = { normal: 700, fast: 150, turbo: 15 };
+const SPEED_FACTOR: Record<Speed, number> = { normal: 1, fast: 0.45, turbo: 0 };
+/** Tak dlouho má nová otázka třídu s animací příchodu. */
+const ENTER_MS = 400;
+
+/** Jedna otázka na hráče: co se ptá, kdo se ptá a jaké má možnosti. */
+interface Decision {
+  /** Změna klíče znamená novou otázku, jen tehdy se panel animuje. */
+  key: string;
+  prompt?: string;
+  tip?: string;
+  tone?: 'wait';
+  character?: CharacterId;
+  deed?: TileId;
+  actions: string[];
+  /** Jestli jsou teď přístupné Burza, Zadní místnost a Obchod. */
+  doors: boolean;
+}
 
 function emptySide(): TradeSide {
   return { tiles: [], cash: 0, jailCards: 0 };
@@ -82,20 +101,36 @@ export class GameScreen {
   /** U hosta v multiplayeru boti neběží, hraje je hostitel. */
   private readonly bots: BotRunner | null;
   private readonly unsubscribe: () => void;
+  private readonly director: Director<GameState, Beat>;
+  private readonly stage: Stage;
+  private readonly prices = new PriceHistory();
+  /** Stav, který hráč právě vidí. Skutečný stav ho dožene, až doběhnou scény. */
+  private shown: GameState;
+  /** Do které události už smí město dojet. */
+  private revealedSeq: number;
+  private rolling = false;
   private selectedTile: TileId | null = null;
   private draft: TradeDraft | null = null;
-  private businessOpen = false;
+  private panel: Panel = null;
+  private historyOpen = false;
   private speed: Speed = 'normal';
   private endPublished = false;
-  /** Honička tohoto hráče právě běží, nebo se čeká, až hostitel potvrdí výsledek. */
-  private chaseRunning = false;
+  private minigameRunning = false;
   private readonly minigameAbort = new AbortController();
-  private readonly lines: { text: string; cls: string; color: string }[] = [];
-  private lastSeq = 0;
+  private readonly lines: { text: string; color: string }[] = [];
+  private headline: { text: string; color: string } = { text: '', color: 'transparent' };
+  private lastSeq: number;
+  private lastDecision = '';
+  private decisionAt = 0;
+  private readonly lastCash = new Map<PlayerId, number>();
   /** `null` znamená 2D desku: režim Klasika, nebo prohlížeč bez WebGL. */
   private readonly view: CityView | null;
   private readonly ui: HTMLElement;
   private readonly tooltip: HTMLElement;
+  private readonly hint: HTMLElement;
+  private readonly slots: Record<'main' | 'players' | 'dock' | 'overlays', HTMLElement>;
+  private readonly painted = new WeakMap<HTMLElement, string>();
+  private readonly onKey = (event: KeyboardEvent) => this.handleKey(event);
 
   constructor(
     private readonly root: HTMLElement,
@@ -107,17 +142,75 @@ export class GameScreen {
     this.root.innerHTML = `
       <div class="scene-host"></div>
       <div class="tile-tooltip" hidden></div>
-      <div class="ui"></div>`;
+      <div class="ui"></div>
+      <div class="stage"></div>
+      <div class="ui-tip" hidden></div>`;
     this.ui = this.root.querySelector<HTMLElement>('.ui')!;
     this.tooltip = this.root.querySelector<HTMLElement>('.tile-tooltip')!;
-    applyMode(transport.getState().settings.mode);
-    this.view = this.createView(transport.getState());
-    // Pořadí je důležité: město se musí překreslit dřív, než si bot spočítá čekání na auto.
-    this.unsubscribe = this.transport.subscribe(() => this.render());
-    this.bots = role === 'guest' ? null : new BotRunner(this.transport, (s) => this.delay(s));
+    this.hint = this.root.querySelector<HTMLElement>('.ui-tip')!;
+    this.stage = new Stage(this.root.querySelector<HTMLElement>('.stage')!);
+
+    const initial = transport.getState();
+    applyMode(initial.settings.mode);
+    this.shown = initial;
+    this.lastSeq = initial.eventSeq;
+    this.revealedSeq = initial.eventSeq;
+    this.prices.record(initial);
+    this.view = this.createView(initial);
+
+    this.ui.innerHTML = `
+      <div class="game${this.view ? ' in-city' : ''}">
+        <div class="slot-main"></div>
+        <aside class="side">
+          <section class="players"></section>
+          <div class="slot-dock"></div>
+        </aside>
+      </div>
+      <div class="slot-overlays"></div>`;
+    this.slots = {
+      main: this.ui.querySelector<HTMLElement>('.slot-main')!,
+      players: this.ui.querySelector<HTMLElement>('.players')!,
+      dock: this.ui.querySelector<HTMLElement>('.slot-dock')!,
+      overlays: this.ui.querySelector<HTMLElement>('.slot-overlays')!,
+    };
+
+    this.director = new Director<GameState, Beat>({
+      play: (beat) => this.playBeat(beat),
+      duration: (beat, backlog) => this.beatMs(beat, backlog),
+      settle: (state) => {
+        this.shown = state;
+      },
+      idle: () => {
+        this.stage.clear();
+        this.rolling = false;
+        this.revealedSeq = Number.POSITIVE_INFINITY;
+        this.render();
+      },
+    });
+
+    // Pořadí je důležité: scény se musí zařadit dřív, než se bot rozhodne, jestli smí hrát.
+    this.unsubscribe = this.transport.subscribe(() => this.onState());
+    this.bots =
+      role === 'guest'
+        ? null
+        : new BotRunner(
+            this.transport,
+            (s) => this.delay(s),
+            () => this.director.busy || (this.view?.busy ?? false),
+          );
     this.root.onclick = (event) => this.onClick(event);
     this.root.oninput = (event) => this.onInput(event);
     this.root.onsubmit = (event) => this.onSubmit(event);
+    this.root.onmouseover = (event) => this.onHoverTip(event);
+    document.addEventListener('keydown', this.onKey, true);
+
+    // Partie začíná jedním oznámením, kdo je na tahu. Starší události jen do historie.
+    for (const event of initial.events) {
+      const text = formatEvent(initial, event);
+      if (text) this.addLine(text, 'player' in event ? event.player : null);
+    }
+    const turn = [...initial.events].reverse().find((event) => event.type === 'turnStart');
+    this.director.enqueue(initial, turn ? beatsFor(initial, [turn], this.me) : []);
     this.render();
   }
 
@@ -125,10 +218,13 @@ export class GameScreen {
     this.minigameAbort.abort();
     this.unsubscribe();
     this.bots?.stop();
+    this.director.stop();
     this.view?.dispose();
+    document.removeEventListener('keydown', this.onKey, true);
     this.root.onclick = null;
     this.root.oninput = null;
     this.root.onsubmit = null;
+    this.root.onmouseover = null;
   }
 
   private createView(state: GameState): CityView | null {
@@ -161,9 +257,9 @@ export class GameScreen {
       this.tooltip.hidden = true;
       return;
     }
-    const foot = footText(this.state, tile);
-    const owner = this.state.deeds[tile]?.owner ?? null;
-    const ownerName = owner === null ? '' : (this.state.players[owner]?.name ?? '');
+    const foot = footText(this.shown, tile);
+    const owner = this.shown.deeds[tile]?.owner ?? null;
+    const ownerName = owner === null ? '' : (this.shown.players[owner]?.name ?? '');
     this.tooltip.innerHTML = `
       <strong>${cs.tiles[tile] ?? ''}</strong>
       ${foot ? `<small>${foot}</small>` : ''}
@@ -173,10 +269,30 @@ export class GameScreen {
     this.tooltip.hidden = false;
   }
 
+  /** Popisek tlačítka: jedna věta navíc jen tomu, kdo se zeptá najetím myši. */
+  private onHoverTip(event: MouseEvent): void {
+    const el = (event.target as HTMLElement).closest<HTMLElement>('[data-tip]');
+    const tip = el?.dataset.tip;
+    if (!el || !tip) {
+      this.hint.hidden = true;
+      return;
+    }
+    this.hint.textContent = tip;
+    this.hint.hidden = false;
+    const box = el.getBoundingClientRect();
+    const width = this.hint.offsetWidth;
+    const left = Math.max(
+      8,
+      Math.min(window.innerWidth - width - 8, box.left + box.width / 2 - width / 2),
+    );
+    this.hint.style.left = `${left}px`;
+    const above = box.top - this.hint.offsetHeight - 8;
+    this.hint.style.top = `${above > 8 ? above : box.bottom + 8}px`;
+  }
+
   private delay(s: GameState): number {
     const base = SPEED_MS[this.speed];
-    const wait = s.auction || s.trade ? Math.ceil(base / 2) : base;
-    return wait + (this.view?.remainingMs ?? 0);
+    return s.auction || s.trade ? Math.ceil(base / 2) : base;
   }
 
   private get state(): GameState {
@@ -189,101 +305,125 @@ export class GameScreen {
     this.transport.dispatch(action);
   }
 
-  private addLine(text: string, cls: string, player: PlayerId | null): void {
+  private addLine(text: string, player: PlayerId | null): void {
     const color = player === null ? 'transparent' : (PLAYER_COLORS[player] ?? 'transparent');
-    this.lines.unshift({ text, cls, color });
+    this.lines.unshift({ text, color });
+    this.lines.length = Math.min(this.lines.length, 80);
+    this.headline = { text, color };
   }
 
-  private collectLog(s: GameState): void {
-    let pendingRoll: Extract<GameEvent, { type: 'roll' }> | null = null;
-    const flushRoll = () => {
-      if (pendingRoll) this.addLine(formatEvent(s, pendingRoll), '', pendingRoll.player);
-      pendingRoll = null;
-    };
-    for (const event of s.events) {
-      if (event.seq <= this.lastSeq) continue;
-      this.lastSeq = event.seq;
-      if (event.type === 'roll') {
-        flushRoll();
-        pendingRoll = event;
-        continue;
-      }
-      if (event.type === 'move') {
-        // Hod a pohyb patří k sobě, takže ve výpisu tvoří jeden řádek.
-        if (pendingRoll?.player === event.player) {
-          const [a, b] = pendingRoll.dice;
-          const name = s.players[event.player]?.name ?? '';
-          this.addLine(cs.log.rollMove(name, a, b, cs.tiles[event.tile] ?? ''), '', event.player);
-          pendingRoll = null;
-        } else {
-          flushRoll();
-          this.addLine(formatEvent(s, event), '', event.player);
-        }
-        continue;
-      }
-      if (event.type !== 'passStart') flushRoll();
-      const important = ['bankrupt', 'busted', 'gameOver', 'turnStart'].includes(event.type);
-      const player = 'player' in event ? event.player : 'from' in event ? event.from : null;
-      this.addLine(formatEvent(s, event), important ? `log-${event.type}` : '', player);
-      const quip = quipFor(s, event);
-      if (quip) this.addLine(quip, 'log-quip', event.type === 'rent' ? event.owner : player);
+  /** Pravidla něco udělala: přeložit na scény a zařadit do fronty. */
+  private onState(): void {
+    const s = this.state;
+    const fresh = s.events.filter((event) => event.seq > this.lastSeq);
+    this.lastSeq = s.eventSeq;
+    this.prices.record(s);
+    if (this.revealedSeq === Number.POSITIVE_INFINITY)
+      this.revealedSeq = fresh[0]?.seq ?? s.eventSeq;
+    this.director.enqueue(s, beatsFor(s, fresh, this.me));
+    this.render();
+  }
+
+  private playBeat(beat: Beat): void {
+    this.revealedSeq = beat.seq;
+    if (beat.text) this.addLine(beat.text, beat.player);
+    this.rolling = beat.kind === 'dice';
+    if (beat.kind === 'toast') {
+      this.stage.show(beat, 1, false);
+    } else {
+      this.stage.show(
+        beat,
+        this.scaled('ms' in beat ? beat.ms : 0),
+        this.role === 'solo' || beat.player === this.me,
+      );
     }
-    flushRoll();
-    this.lines.length = Math.min(this.lines.length, 60);
+    this.render();
+  }
+
+  private scaled(ms: number): number {
+    return Math.round(ms * SPEED_FACTOR[this.speed]);
+  }
+
+  private beatMs(beat: Beat, backlog: number): number {
+    if (beat.kind === 'drive') {
+      if (this.speed === 'turbo') return 0;
+      return this.view ? this.view.remainingMs + 150 : this.scaled(450);
+    }
+    if (!('ms' in beat)) return 0;
+    // Když se fronta plní rychleji, než se přehrává, scény se zkracují, ať hra neutíká.
+    return Math.round(this.scaled(beat.ms) * (backlog > 1 ? 0.5 : 1));
+  }
+
+  private patch(el: HTMLElement, html: string): void {
+    if (this.painted.get(el) === html) return;
+    this.painted.set(el, html);
+    el.innerHTML = html;
   }
 
   private render(): void {
-    const s = this.state;
-    this.collectLog(s);
-    if (s.phase === 'gameOver' && !this.endPublished) {
+    const s = this.shown;
+    applyMode(s.settings.mode);
+    if (s.phase === 'gameOver' && !this.director.busy && !this.endPublished) {
       this.endPublished = true;
       publishGameEnd(summarizeGame(s));
     }
-    this.view?.update(s, this.me, this.selectedTile);
-    if (actorOf(s) !== this.me) this.businessOpen = false;
-    const focus = this.ui.querySelector<HTMLElement>('.log')?.scrollTop ?? 0;
-    const stage = this.view
-      ? `<div class="hud">${this.renderCenter(s)}</div>`
-      : renderBoard(s, this.me, this.renderCenter(s));
-    this.ui.innerHTML = `
-      <div class="game${this.view ? ' in-city' : ''}">
-        ${stage}
-        <aside class="side">
-          ${this.renderPlayers(s)}
-          <section class="panel actions">${this.renderActions(s)}</section>
-          ${this.renderFooter()}
-        </aside>
-      </div>
-      ${this.draft ? this.renderTradeDialog(s, this.draft) : ''}
-      ${this.businessOpen ? this.renderBusinessDialog(s) : ''}
-      ${s.phase === 'gameOver' ? this.renderResult(s) : ''}`;
-    const log = this.ui.querySelector<HTMLElement>('.log');
-    if (log) log.scrollTop = focus;
-    this.syncChase(s);
+    this.view?.update(
+      this.director.currentState ?? s,
+      this.me,
+      this.selectedTile,
+      this.revealedSeq,
+    );
+    if (actorOf(s) !== this.me) this.panel = null;
+    this.patch(
+      this.slots.main,
+      this.view
+        ? `<div class="hud">${this.renderHud(s)}</div>`
+        : renderBoard(s, this.me, this.renderHud(s)),
+    );
+    this.patchPlayers(s);
+    this.patch(this.slots.dock, this.renderDock(s));
+    this.patch(this.slots.overlays, this.renderOverlays(s));
+    this.syncMinigame();
   }
 
-  /** Spustí honičku, když má ujíždět tento člověk a jeho auto už dojelo. */
-  private syncChase(s: GameState): void {
+  private renderOverlays(s: GameState): string {
+    return [
+      this.draft ? this.renderTradeDialog(s, this.draft) : '',
+      this.panel === 'market' ? renderMarket(s, this.me, this.prices) : '',
+      this.panel === 'backroom' ? renderBackroom(s, this.me) : '',
+      this.historyOpen ? this.renderHistory() : '',
+      s.phase === 'gameOver' && !this.director.busy ? this.renderResult(s) : '',
+    ].join('');
+  }
+
+  /** Spustí minihru, když ji má hrát tento člověk a scény i auto už doběhly. */
+  private syncMinigame(): void {
+    const s = this.state;
+    const mine = s.active === this.me && !s.players[this.me]?.bot;
     if (s.phase !== 'chase') {
-      this.chaseRunning = false;
+      this.minigameRunning = false;
       return;
     }
-    const mine = s.active === this.me && !s.players[this.me]?.bot;
-    if (!mine || this.chaseRunning || this.view?.busy) return;
-    this.chaseRunning = true;
-    const input = {
+    if (!mine || this.minigameRunning || this.director.busy || this.view?.busy) return;
+    this.runMinigame(chaseMinigame, {
       player: this.me,
       seed: (s.rng ^ s.turn) | 0,
       color: PLAYER_COLORS[this.me] ?? '#ffffff',
-    };
+    });
+  }
+
+  /** Společné spuštění všech miniher: pauza města, hra, zápis výsledku běžnou akcí. */
+  private runMinigame<Input, Result>(game: Minigame<Input, Result>, input: Input): void {
+    this.minigameRunning = true;
+    this.hint.hidden = true;
     this.view?.setPaused(true);
-    chaseMinigame
+    game
       .start({ host: this.root, input, signal: this.minigameAbort.signal })
       .then(
-        (result) => chaseMinigame.resultAction(input, result),
+        (result) => game.resultAction(input, result),
         (error: unknown) => {
-          console.warn('Honička nejde spustit, rozhodne náhoda.', error);
-          return chaseMinigame.autoResolve(input);
+          console.warn('Minihra nejde spustit, rozhodne náhoda.', error);
+          return game.autoResolve(input);
         },
       )
       .then((action) => {
@@ -291,81 +431,62 @@ export class GameScreen {
         this.view?.setPaused(false);
         this.send(action);
       })
-      .catch((error: unknown) => console.warn('Výsledek honičky nejde zapsat.', error));
+      .catch((error: unknown) => console.warn('Výsledek minihry nejde zapsat.', error));
   }
 
-  private renderDie(value: number): string {
-    const pips: Record<number, number[]> = {
-      1: [4],
-      2: [0, 8],
-      3: [0, 4, 8],
-      4: [0, 2, 6, 8],
-      5: [0, 2, 4, 6, 8],
-      6: [0, 2, 3, 5, 6, 8],
-    };
-    const cells = Array.from(
-      { length: 9 },
-      (_, i) => `<span class="${pips[value]?.includes(i) ? 'dot' : ''}"></span>`,
-    ).join('');
-    return `<div class="die" aria-label="${value}">${cells}</div>`;
-  }
-
-  /** Karta vytažená v tomto tahu. Zůstává ve středu, dokud nezačne další tah. */
-  private currentCard(s: GameState): Extract<GameEvent, { type: 'card' }> | null {
-    for (let i = s.events.length - 1; i >= 0; i--) {
-      const event = s.events[i]!;
-      if (event.type === 'turnStart') return null;
-      if (event.type === 'card') return event;
-    }
-    return null;
-  }
-
-  private renderCenter(s: GameState): string {
-    const actor = actorOf(s);
-    const banner =
-      actor === null
-        ? ''
-        : `<div class="turn-banner${actor === this.me ? ' mine' : ''}" style="--c:${PLAYER_COLORS[actor]}">
-             ${actor === this.me ? cs.game.yourTurn : cs.game.onTurn(escapeHtml(s.players[actor]!.name))}
-           </div>`;
-    const dice = s.lastRoll
-      ? `${this.renderDie(s.lastRoll[0])}${this.renderDie(s.lastRoll[1])}`
-      : `${this.renderDie(1)}${this.renderDie(1)}`;
-    const card = this.currentCard(s);
-    const deck = (id: 'tip' | 'urad', icon: string) =>
-      `<div class="deck deck-${id}${card?.deck === id ? ' drawn' : ''}"><span>${icon}</span><small>${cs.decks[id]}</small></div>`;
-    const cardView = card
-      ? `<div class="drawn-card deck-${card.deck}">
-           <strong>${cs.decks[card.deck]} · ${escapeHtml(s.players[card.player]?.name ?? '')}</strong>
-           <p>${cs.cards[card.deck][card.card] ?? ''}</p>
-         </div>`
-      : '';
+  private renderHud(s: GameState): string {
+    const dice = s.lastRoll ?? [1, 1];
     const detail =
       this.selectedTile === null
         ? ''
         : `<div class="tile-detail">${this.renderDeed(s, this.selectedTile, true)}</div>`;
+    const speeds = (['normal', 'fast', 'turbo'] as const)
+      .map(
+        (speed) =>
+          `<button class="chip${speed === this.speed ? ' on' : ''}" data-action="speed" data-speed="${speed}">${
+            speed === 'normal'
+              ? cs.game.speedNormal
+              : speed === 'fast'
+                ? cs.game.speedFast
+                : cs.game.speedTurbo
+          }</button>`,
+      )
+      .join('');
+    // Tempo je jen pro sólo: u společného stolu by ho jeden hráč vnutil ostatním.
+    const tempo =
+      this.role === 'solo'
+        ? `<div class="chip-row" data-tip="${cs.game.speed}">${speeds}</div>`
+        : '';
     return `
       <div class="center-head">
         <h1 class="logo small">${cs.title}</h1>
         <span class="round">${cs.game.round(s.round)}</span>
+      </div>
+      <div class="chip-row">
         ${this.view ? `<button class="chip" data-action="resetCamera">${cs.game.resetCamera}</button>` : ''}
+        <button class="chip" data-action="openHistory">${icon('history')}${cs.game.history}</button>
+        <button class="chip" data-tip="${cs.game.hints}">${icon('info')}${cs.game.help}</button>
+        <button class="chip" data-action="quit">${cs.game.quit}</button>
       </div>
-      ${banner}
-      <div class="table">
-        ${deck('tip', s.settings.mode === 'classic' ? '❓' : '🤫')}
-        <div class="dice">${dice}</div>
-        ${deck('urad', s.settings.mode === 'classic' ? '🧰' : '🏛️')}
-      </div>
-      ${cardView}
-      ${detail}
-      <h3 class="log-title">${cs.game.log}</h3>
-      <div class="log">
-        ${this.lines
-          .map(
-            (line) =>
-              `<p class="${line.cls}" style="--c:${line.color}">${escapeHtml(line.text)}</p>`,
-          )
-          .join('')}
+      ${tempo}
+      <div class="dice-tray${this.rolling ? ' empty' : ''}">${dieFace(dice[0])}${dieFace(dice[1])}</div>
+      <button class="ticker" data-action="openHistory" style="--c:${this.headline.color}">${escapeHtml(this.headline.text)}</button>
+      ${detail}`;
+  }
+
+  private renderHistory(): string {
+    const rows = this.lines
+      .map((line) => `<p style="--c:${line.color}">${escapeHtml(line.text)}</p>`)
+      .join('');
+    return `
+      <div class="overlay">
+        <div class="dialog history">
+          <header class="row between">
+            <h2>${cs.game.log}</h2>
+            <button class="world-close" data-action="closeHistory" data-primary aria-label="${cs.game.close}">×</button>
+          </header>
+          <div class="log">${rows}</div>
+        </div>
       </div>`;
   }
 
@@ -383,7 +504,7 @@ export class GameScreen {
             const deed = s.deeds[tile];
             const owned = deed?.owner === player;
             const cls = `${owned ? 'has' : ''}${owned && deed?.mortgaged ? ' mort' : ''}`;
-            return `<button class="holding ${cls}" style="--c:${tileColor(tile).bg}" data-tile="${tile}" title="${cs.tiles[tile]}"></button>`;
+            return `<button class="holding ${cls}" style="--c:${tileColor(tile).bg}" data-tile="${tile}" data-tip="${cs.tiles[tile]}"></button>`;
           })
           .join('');
         return `<span class="holding-group">${cells}</span>`;
@@ -391,259 +512,347 @@ export class GameScreen {
       .join('');
   }
 
-  private renderPlayers(s: GameState): string {
+  /** Každý hráč se překresluje zvlášť, aby změna peněz bliknula jen u něj. */
+  private patchPlayers(s: GameState): void {
+    const host = this.slots.players;
+    while (host.children.length < s.players.length) {
+      host.append(document.createElement('div'));
+    }
     const actor = actorOf(s);
-    const rows = s.players
-      .map((p) => {
-        const flags = [
-          p.id === this.me ? cs.game.you : p.bot ? cs.personality[p.bot.personality] : '',
-          p.inJail ? cs.game.inJail : '',
-          p.bankrupt ? cs.game.isBankrupt : '',
-          p.jailCards.length ? cs.game.jailCardsCount(p.jailCards.length) : '',
-          p.archetype ? cs.archetypes[p.archetype].name : '',
-          p.dirty ? cs.biz.dirtyShort(formatMoney(p.dirty)) : '',
-        ]
-          .filter(Boolean)
-          .join(' · ');
-        return `
-          <div class="player${p.id === actor ? ' active' : ''}${p.bankrupt ? ' out' : ''}" style="--color:${PLAYER_COLORS[p.id]}">
-            <div class="player-head">
-              <i class="token" style="background:${PLAYER_COLORS[p.id]}">${escapeHtml(p.name.charAt(0).toUpperCase())}</i>
-              <strong>${escapeHtml(p.name)}</strong>
-              <span class="cash">${formatMoney(p.cash)}</span>
-            </div>
-            <small>${flags}</small>
-            <div class="holdings">${this.renderHoldings(s, p.id)}</div>
-          </div>`;
-      })
-      .join('');
-    return `<section class="panel players">${rows}</section>`;
+    s.players.forEach((p, i) => {
+      const flags = [
+        p.inJail ? `<i class="flag bad" data-tip="${cs.game.inJail}">${icon('bars')}</i>` : '',
+        p.jailCards.length
+          ? `<i class="flag" data-tip="${cs.game.jailCardsCount(p.jailCards.length)}">${icon('key')}</i>`
+          : '',
+      ].join('');
+      const previous = this.lastCash.get(p.id) ?? p.cash;
+      const bump = p.cash > previous ? ' up' : p.cash < previous ? ' down' : '';
+      const role = p.id === this.me ? cs.game.you : p.bot ? cs.personality[p.bot.personality] : '';
+      const archetype = p.archetype ? cs.archetypes[p.archetype] : null;
+      const html = `
+        <div class="player${p.id === actor ? ' active' : ''}${p.bankrupt ? ' out' : ''}${p.id === this.me ? ' me' : ''}" style="--color:${PLAYER_COLORS[p.id]}">
+          <div class="player-head">
+            <i class="token" style="background:${PLAYER_COLORS[p.id]}">${escapeHtml(p.name.charAt(0).toUpperCase())}</i>
+            <strong>${escapeHtml(p.name)}</strong>
+            ${flags}
+          </div>
+          <div class="player-money">
+            <span class="cash${bump}" data-cash="${p.cash}" data-tip="${cs.biz.whiteTip}">${formatMoney(p.cash)}</span>
+            ${p.dirty ? `<span class="cash-dirty" data-tip="${cs.biz.dirtyTip}">${formatMoney(p.dirty)}</span>` : ''}
+          </div>
+          <small${archetype ? ` data-tip="${archetype.perk}"` : ''}>${[role, archetype?.name].filter(Boolean).join(' · ')}</small>
+          <div class="holdings">${this.renderHoldings(s, p.id)}</div>
+        </div>`;
+      this.patch(host.children[i] as HTMLElement, html);
+      this.lastCash.set(p.id, p.cash);
+    });
   }
 
-  private renderActions(s: GameState): string {
+  /** Spodní lišta: co se teď rozhoduje, peníze a tři dveře. */
+  private renderDock(s: GameState): string {
     const me = s.players[this.me]!;
-    if (s.phase === 'gameOver') return '';
-    if (me.bankrupt) return `<p>${cs.game.youBankrupt}</p>`;
-    const actor = actorOf(s);
-    if (s.trade?.from === this.me) {
-      return `<p>${cs.game.tradeWaiting(escapeHtml(s.players[s.trade.to]!.name))}</p>`;
+    const decision = this.director.busy ? this.waitingDecision(s) : this.decide(s);
+    if (decision.key !== this.lastDecision) {
+      this.lastDecision = decision.key;
+      this.decisionAt = performance.now();
     }
-    if (actor !== this.me) {
-      const actorName = escapeHtml(s.players[actor ?? 0]!.name);
-      if (s.phase === 'chase') return `<p class="waiting">${cs.chase.running(actorName)}</p>`;
-      return `${s.auction ? this.renderAuctionInfo(s) : ''}<p class="waiting">${cs.game.waiting(actorName)}</p>`;
-    }
-    // Volby čekají, až auto dojede, ať je vidět, kde hráč vlastně stojí.
-    if (this.view?.busy) return `<p class="waiting">${cs.game.driving}</p>`;
-    if (s.trade) return this.renderIncomingTrade(s);
-    const debt = s.debts[0];
-    if (debt) {
-      const creditor = debt.creditor === null ? cs.game.bank : s.players[debt.creditor]!.name;
-      return `
-        <h3>${cs.game.debtTitle}</h3>
-        <p>${cs.game.debtText(formatMoney(debt.amount), escapeHtml(creditor))}</p>
-        ${button(cs.game.pay(formatMoney(debt.amount)), 'settleDebt', me.cash < debt.amount ? 'disabled' : '', true)}
-        ${this.businessButton(s)}
-        ${this.tradeButton(s)}
-        ${button(cs.game.bankrupt, 'declareBankruptcy', 'data-danger')}`;
-    }
-    if (s.auction) return this.renderAuction(s);
-    if (s.phase === 'awaitBuy' && s.pendingBuy !== null) {
-      const price = ownablePrice(s.pendingBuy) ?? 0;
-      const affordable = me.cash >= price;
-      return `
-        ${this.renderDeed(s, s.pendingBuy, false)}
-        ${button(cs.game.buy(formatMoney(price)), 'buy', affordable ? '' : 'disabled', affordable)}
-        ${button(cs.game.decline, 'decline', '', !affordable)}
-        ${this.tradeButton(s)}`;
-    }
-    if (s.phase === 'awaitTax' && s.pendingTax) return this.renderTax(s, s.pendingTax);
-    if (s.phase === 'awaitRent' && s.pendingRent) return this.renderRent(s, s.pendingRent);
-    if (s.phase === 'chase')
-      return `<p class="waiting">${cs.chase.running(escapeHtml(me.name))}</p>`;
-    if (s.phase === 'awaitRoll') {
-      const jail = me.inJail
-        ? `${button(cs.game.payBail(formatMoney(JAIL_BAIL)), 'payBail', me.cash < JAIL_BAIL ? 'disabled' : '')}
-           ${me.jailCards.length ? button(cs.game.useJailCard, 'useJailCard') : ''}
-           ${this.policeBribeButton(s)}`
-        : '';
-      const label = me.inJail ? cs.game.rollInJail : cs.game.roll;
-      return `${button(label, 'roll', '', true)}${jail}${this.businessButton(s)}${this.tradeButton(s)}`;
-    }
-    const label = s.extraRoll && !me.inJail ? cs.game.rollAgain : cs.game.endTurn;
-    return `${button(label, 'endTurn', '', true)}${this.businessButton(s)}${this.tradeButton(s)}`;
-  }
-
-  private businessButton(s: GameState): string {
-    return hasBusiness(s) ? button(cs.biz.open, 'openBusiness') : '';
-  }
-
-  private policeBribeButton(s: GameState): string {
-    if (!BUSINESS || !canBribePolice(s, this.me)) return '';
-    const rules = BUSINESS.police;
-    const label = cs.biz.bribePolice(
-      formatMoney(bribeCost(s, this.me, rules)),
-      bribeRiskPct(s, this.me, rules),
-    );
-    return button(label, 'bribePolice');
-  }
-
-  private renderRent(s: GameState, rent: NonNullable<GameState['pendingRent']>): string {
-    const owner = escapeHtml(s.players[rent.owner]!.name);
-    const factor = BUSINESS?.chase.caughtRentFactor ?? 2;
-    return `
-      <h3>${cs.chase.rentTitle}</h3>
-      <p>${cs.chase.rentText(cs.tiles[rent.tile] ?? '', owner, formatMoney(rent.amount))}</p>
-      ${button(cs.chase.payRent(formatMoney(rent.amount)), 'payRent', '', true)}
-      ${button(cs.chase.flee(formatMoney(rent.amount * factor)), 'flee')}
-      <small>${cs.chase.fleeNote(BUSINESS?.chase.cooldownRounds ?? 0)}</small>`;
-  }
-
-  private renderTax(s: GameState, tax: NonNullable<GameState['pendingTax']>): string {
-    const amount = formatMoney(tax.amount);
-    const bribe =
-      BUSINESS && canBribeOfficial(s, this.me)
-        ? button(
-            cs.biz.bribeOfficial(
-              formatMoney(bribeCost(s, this.me, BUSINESS.official)),
-              bribeRiskPct(s, this.me, BUSINESS.official),
-            ),
-            'bribeOfficial',
-          )
+    const fresh = performance.now() - this.decisionAt < ENTER_MS;
+    const top =
+      decision.deed !== undefined || decision.character || decision.prompt
+        ? `<div class="decision${fresh ? ' enter' : ''}">
+             ${decision.character ? `<div class="decision-char">${character(decision.character)}</div>` : ''}
+             ${decision.prompt ? `<p class="bubble still${decision.tone === 'wait' ? ' quiet' : ''}"${decision.tip ? ` data-tip="${decision.tip}"` : ''}>${decision.prompt}</p>` : ''}
+             ${decision.deed !== undefined ? this.renderDeed(s, decision.deed, false) : ''}
+           </div>`
         : '';
     return `
-      <h3>${cs.biz.taxTitle}</h3>
-      <p>${cs.biz.taxText(cs.tiles[tax.tile] ?? '', amount)}</p>
-      ${button(cs.biz.payTax(amount), 'payTax', '', true)}
-      ${bribe}`;
-  }
-
-  private renderBusinessDialog(s: GameState): string {
-    if (!BUSINESS) return '';
-    const me = s.players[this.me]!;
-    return `
-      <div class="overlay">
-        <div class="dialog business">
-          <h2>${cs.biz.title}</h2>
-          <p class="biz-balance">
-            <span>${cs.biz.white}: <strong>${formatMoney(me.cash)}</strong></span>
-            <span>${cs.biz.dirty}: <strong>${formatMoney(me.dirty)}</strong></span>
-            ${me.archetype ? `<span>${cs.archetypes[me.archetype].name}: ${cs.archetypes[me.archetype].perk}</span>` : ''}
-          </p>
-          <p><small>${cs.biz.intro}</small></p>
-          ${this.renderLaunderSection(s)}
-          ${this.renderMarketSection(s)}
-          <div class="row">${button(cs.biz.close, 'closeBusiness', '', true)}</div>
+      <div class="dock">
+        ${top}
+        <div class="dock-bar">
+          ${this.renderWallet(s, me.id)}
+          <div class="dock-actions">${decision.actions.join('')}</div>
+          ${this.renderDoors(s, decision.doors)}
         </div>
       </div>`;
   }
 
-  private renderLaunderSection(s: GameState): string {
-    const amount = launderLimit(s, this.me);
-    const rows = tilesOwnedBy(s, this.me)
-      .map((tile) => {
-        const deed = s.deeds[tile]!;
-        const toggle = canSetOffBooks(s, this.me, tile)
-          ? button(
-              deed.offBooks ? cs.biz.offBooksOn : cs.biz.offBooksOff,
-              'setOffBooks',
-              `data-tile-id="${tile}" data-on="${deed.offBooks ? '' : '1'}"`,
-            )
-          : '';
-        const net = formatMoney(launderNet(s, this.me, amount));
-        const wash = deed.mortgaged
-          ? cs.biz.mortgaged
-          : s.launderedTiles.includes(tile)
-            ? cs.biz.laundered
-            : amount === 0
-              ? ''
-              : button(
-                  cs.biz.launder(formatMoney(amount), net),
-                  'launder',
-                  `data-tile-id="${tile}" data-amount="${amount}" ${canLaunder(s, this.me, tile, amount) ? '' : 'disabled'}`,
-                );
-        return `<tr><td>${cs.tiles[tile]}</td><td>${toggle}</td><td>${wash}</td></tr>`;
-      })
-      .join('');
-    const hint = cs.biz.launderHint(
-      formatMoney(BUSINESS!.launderCap),
-      launderFeePct(s, this.me),
-      launderRiskPct(s, this.me),
-    );
+  private renderWallet(s: GameState, id: PlayerId): string {
+    const p = s.players[id]!;
+    const dirty = hasBusiness(s)
+      ? `<span class="wallet-dirty" data-tip="${cs.biz.dirtyTip}"><small>${cs.biz.dirty}</small><b>${formatMoney(p.dirty)}</b></span>`
+      : '';
     return `
-      <h3>${cs.biz.launderTitle}</h3>
-      <p><small>${hint} ${cs.biz.offBooksHint}</small></p>
-      ${rows ? `<div class="biz-scroll"><table class="biz-table">${rows}</table></div>` : `<p>${cs.biz.noTiles}</p>`}`;
+      <div class="wallet">
+        <span data-tip="${cs.biz.whiteTip}"><small>${cs.biz.white}</small><b>${formatMoney(p.cash)}</b></span>
+        ${dirty}
+      </div>`;
   }
 
-  private renderMarketSection(s: GameState): string {
-    const { pump, stock } = BUSINESS!;
-    const rows = GROUP_ORDER.map((group) => this.renderMarketRow(s, group)).join('');
+  private renderDoors(s: GameState, open: boolean): string {
+    const d = cs.game.doors;
+    const closed = open ? '' : d.closed;
+    const tradeOk = open && canProposeTrade(s, this.me);
+    const business = hasBusiness(s)
+      ? `
+        <button class="door door-market" data-action="openMarket" data-tip="${closed || d.marketTip}"${open ? '' : ' disabled'}>
+          ${icon('chart')}<span>${d.market}</span>
+        </button>
+        <button class="door door-back" data-action="openBackroom" data-tip="${closed || d.backroomTip}"${open ? '' : ' disabled'}>
+          ${icon('door')}<span>${d.backroom}</span>
+        </button>`
+      : '';
     return `
-      <h3>${cs.biz.marketTitle}</h3>
-      <p><small>${cs.biz.marketHint(stock.maxShares, formatMoney(pump.cost), pump.riskPct)}</small></p>
-      <table class="biz-table">
-        <tr><th>${cs.biz.colFirm}</th><th>${cs.biz.colPrice}</th><th>${cs.biz.colHolding}</th><th></th></tr>
-        ${rows}
-      </table>`;
+      <div class="doors">
+        ${business}
+        <button class="door door-trade" data-action="openTrade" data-tip="${closed || (tradeOk ? d.tradeTip : cs.game.tradeLimit)}"${tradeOk ? '' : ' disabled'}>
+          ${icon('hands')}<span>${d.trade}</span>
+        </button>
+      </div>`;
   }
 
-  private renderMarketRow(s: GameState, group: GroupId): string {
-    const lot = 5;
-    const { count } = holdingOf(s, this.me, group);
-    const data = `data-group="${group}"`;
-    const buttons = [
-      button(
-        cs.biz.buy(lot),
-        'buyShares',
-        `${data} data-count="${lot}" ${canBuyShares(s, this.me, group, lot) ? '' : 'disabled'}`,
-      ),
-      button(
-        cs.biz.sellAll,
-        'sellShares',
-        `${data} data-count="${count}" ${canSellShares(s, this.me, group, count) ? '' : 'disabled'}`,
-      ),
-      button(
-        cs.biz.pump,
-        'pumpDump',
-        `${data} ${canPumpDump(s, this.me, group) ? '' : 'disabled'}`,
-      ),
-    ].join('');
-    const pumping = pumpOn(s, group) ? ` <small>(${cs.biz.pumping})</small>` : '';
-    return `<tr><td>${cs.groups[group]}${pumping}</td><td>${formatMoney(sharePrice(s, group))}</td><td>${count}</td><td class="row">${buttons}</td></tr>`;
+  private waitingDecision(s: GameState): Decision {
+    const actor = actorOf(s);
+    const name = actor === null ? '' : escapeHtml(s.players[actor]!.name);
+    return {
+      key: 'wait',
+      prompt: actor === null || actor === this.me ? '' : cs.game.waiting(name),
+      tone: 'wait',
+      actions: [],
+      doors: false,
+    };
   }
 
-  private tradeButton(s: GameState): string {
-    if (!canProposeTrade(s, this.me)) return `<small>${cs.game.tradeLimit}</small>`;
-    return button(cs.game.tradeOpen, 'openTrade');
+  /** Co má hráč právě teď udělat. Vždy jedna otázka a jedna hlavní volba. */
+  private decide(s: GameState): Decision {
+    const me = s.players[this.me]!;
+    const t = cs.game;
+    const none: Decision = { key: 'none', actions: [], doors: false };
+    if (s.phase === 'gameOver') return none;
+    if (me.bankrupt) return { ...none, key: 'out', prompt: t.youBankrupt, tone: 'wait' };
+    const actor = actorOf(s);
+    if (s.trade?.from === this.me) {
+      return {
+        ...none,
+        key: 'tradeWait',
+        prompt: t.tradeWaiting(escapeHtml(s.players[s.trade.to]!.name)),
+        tone: 'wait',
+      };
+    }
+    if (actor !== this.me) {
+      const name = escapeHtml(s.players[actor ?? 0]!.name);
+      return {
+        ...none,
+        key: `wait${actor}`,
+        prompt: s.phase === 'chase' ? cs.chase.running(name) : t.waiting(name),
+        tone: 'wait',
+        deed: s.auction?.tile,
+      };
+    }
+    if (s.trade) return this.decideTrade(s);
+    const debt = s.debts[0];
+    if (debt) {
+      const creditor = debt.creditor === null ? t.bank : s.players[debt.creditor]!.name;
+      return {
+        key: 'debt',
+        prompt: t.debtPrompt(formatMoney(debt.amount), escapeHtml(creditor)),
+        tip: t.debtTip,
+        character: hasBusiness(s) ? 'bailiff' : undefined,
+        actions: [
+          act(t.pay, 'settleDebt', {
+            kind: 'go',
+            icon: 'coin',
+            sub: formatMoney(debt.amount),
+            disabled: me.cash < debt.amount,
+            primary: me.cash >= debt.amount,
+          }),
+          act(t.bankrupt, 'declareBankruptcy', { kind: 'danger', icon: 'skull' }),
+        ],
+        doors: true,
+      };
+    }
+    if (s.auction) return this.decideAuction(s);
+    if (s.phase === 'awaitBuy' && s.pendingBuy !== null) {
+      const price = ownablePrice(s.pendingBuy) ?? 0;
+      const affordable = me.cash >= price;
+      return {
+        key: `buy${s.pendingBuy}`,
+        prompt: t.prompt.buy,
+        deed: s.pendingBuy,
+        actions: [
+          act(t.buy, 'buy', {
+            kind: 'go',
+            icon: 'stamp',
+            sub: formatMoney(price),
+            disabled: !affordable,
+            primary: affordable,
+          }),
+          act(t.decline, 'decline', {
+            kind: 'legal',
+            icon: 'x',
+            sub: t.declineSub,
+            primary: !affordable,
+          }),
+        ],
+        doors: true,
+      };
+    }
+    if (s.phase === 'awaitTax' && s.pendingTax) return this.decideTax(s, s.pendingTax);
+    if (s.phase === 'awaitRent' && s.pendingRent) return this.decideRent(s, s.pendingRent);
+    if (s.phase === 'chase') {
+      return { ...none, key: 'chase', prompt: cs.chase.running(escapeHtml(me.name)), tone: 'wait' };
+    }
+    if (s.phase === 'awaitRoll') return this.decideRoll(s);
+    const again = s.extraRoll && !me.inJail;
+    return {
+      key: `end${s.turn}`,
+      prompt: again ? t.prompt.again : t.prompt.end,
+      actions: [
+        act(again ? t.rollAgain : t.endTurn, 'endTurn', {
+          kind: 'go',
+          icon: again ? 'dice' : 'stop',
+          primary: true,
+        }),
+      ],
+      doors: true,
+    };
   }
 
-  private renderAuctionInfo(s: GameState): string {
+  private decideRoll(s: GameState): Decision {
+    const me = s.players[this.me]!;
+    const t = cs.game;
+    if (!me.inJail) {
+      return {
+        key: `roll${s.turn}`,
+        prompt: t.prompt.roll,
+        actions: [
+          act(t.roll, 'roll', { kind: 'go', icon: 'dice', primary: true, attrs: 'data-wiggle' }),
+        ],
+        doors: true,
+      };
+    }
+    const actions = [
+      act(t.rollInJail, 'roll', { kind: 'go', icon: 'dice', primary: true }),
+      act(t.payBail, 'payBail', {
+        kind: 'legal',
+        icon: 'coin',
+        sub: formatMoney(JAIL_BAIL),
+        disabled: me.cash < JAIL_BAIL,
+      }),
+    ];
+    if (me.jailCards.length)
+      actions.push(act(t.useJailCard, 'useJailCard', { kind: 'legal', icon: 'key' }));
+    if (BUSINESS && canBribePolice(s, this.me)) {
+      const rules = BUSINESS.police;
+      actions.push(
+        act(cs.biz.bribePolice, 'bribePolice', {
+          kind: 'black',
+          icon: 'envelope',
+          sub: cs.biz.bribeSub(formatMoneyShort(bribeCost(s, this.me, rules))),
+          risk: bribeRiskPct(s, this.me, rules),
+        }),
+      );
+    }
+    return {
+      key: `jail${s.turn}`,
+      prompt: t.prompt.jail,
+      character: hasBusiness(s) ? 'cop' : undefined,
+      actions,
+      doors: true,
+    };
+  }
+
+  private decideRent(s: GameState, rent: NonNullable<GameState['pendingRent']>): Decision {
+    const factor = BUSINESS?.chase.caughtRentFactor ?? 2;
+    return {
+      key: `rent${rent.tile}`,
+      prompt: cs.chase.rentPrompt(escapeHtml(s.players[rent.owner]!.name)),
+      deed: rent.tile,
+      actions: [
+        act(cs.chase.payRent, 'payRent', {
+          kind: 'go',
+          icon: 'coin',
+          sub: formatMoney(rent.amount),
+          primary: true,
+        }),
+        act(cs.chase.flee, 'flee', {
+          kind: 'danger',
+          icon: 'car',
+          sub: cs.chase.fleeSub(formatMoneyShort(rent.amount * factor)),
+          tip: cs.chase.fleeTip(BUSINESS?.chase.cooldownRounds ?? 0),
+        }),
+      ],
+      doors: false,
+    };
+  }
+
+  private decideTax(s: GameState, tax: NonNullable<GameState['pendingTax']>): Decision {
+    const actions = [
+      act(cs.biz.payTax, 'payTax', {
+        kind: 'go',
+        icon: 'coin',
+        sub: formatMoney(tax.amount),
+        primary: true,
+      }),
+    ];
+    if (BUSINESS && canBribeOfficial(s, this.me)) {
+      const rules = BUSINESS.official;
+      actions.push(
+        act(cs.biz.bribeOfficial, 'bribeOfficial', {
+          kind: 'black',
+          icon: 'envelope',
+          sub: cs.biz.bribeOfficialSub(formatMoneyShort(bribeCost(s, this.me, rules))),
+          risk: bribeRiskPct(s, this.me, rules),
+        }),
+      );
+    }
+    return {
+      key: `tax${tax.tile}`,
+      prompt: cs.biz.taxPrompt(cs.tiles[tax.tile] ?? ''),
+      character: 'clerk',
+      actions,
+      doors: false,
+    };
+  }
+
+  private decideAuction(s: GameState): Decision {
     const auction = s.auction!;
-    const status =
-      auction.leader === null
-        ? cs.game.auctionNoBid
-        : cs.game.auctionBid(formatMoney(auction.bid), escapeHtml(s.players[auction.leader]!.name));
-    return `<h3>${cs.game.auctionTitle}</h3>${this.renderDeed(s, auction.tile, false)}<p class="auction-status">${status}</p>`;
-  }
-
-  private renderAuction(s: GameState): string {
+    const t = cs.game;
     const cash = s.players[this.me]!.cash;
     const min = minBid(s);
-    const quick = [min, min + 4 * MIN_BID_STEP, min + 9 * MIN_BID_STEP]
-      .filter((amount) => amount <= cash)
-      .map((amount, i) =>
-        button(cs.game.bid(formatMoney(amount)), 'bid', `data-amount="${amount}"`, i === 0),
-      )
-      .join('');
+    const amounts = [min, min + 4 * MIN_BID_STEP, min + 9 * MIN_BID_STEP].filter((a) => a <= cash);
+    const bids = amounts.map((amount, i) =>
+      act(t.bid, 'bid', {
+        kind: i === 0 ? 'go' : 'legal',
+        icon: 'hammer',
+        sub: formatMoney(amount),
+        attrs: `data-amount="${amount}"`,
+        primary: i === 0,
+      }),
+    );
     const custom =
       min <= cash
-        ? `<form class="row" data-form="bid">
-             <input name="amount" type="number" min="${min}" max="${cash}" step="${MIN_BID_STEP}" value="${min}" aria-label="${cs.game.customBid}" />
-             <button class="btn" type="submit">${cs.game.customBid}</button>
+        ? `<form class="bid-form" data-form="bid">
+             <input name="amount" type="number" min="${min}" max="${cash}" step="${MIN_BID_STEP}" value="${min}" aria-label="${t.customBid}" />
+             <button class="btn" type="submit">${t.customBid}</button>
            </form>`
         : '';
-    return `${this.renderAuctionInfo(s)}${quick}${custom}${button(cs.game.passBid, 'passBid', '', quick === '')}`;
+    const status =
+      auction.leader === null
+        ? t.auctionNoBid
+        : t.auctionBid(formatMoney(auction.bid), escapeHtml(s.players[auction.leader]!.name));
+    return {
+      key: `auction${auction.tile}`,
+      prompt: `${t.prompt.auction} ${status}`,
+      character: hasBusiness(s) ? 'auctioneer' : undefined,
+      deed: auction.tile,
+      actions: [
+        ...bids,
+        custom,
+        act(t.passBid, 'passBid', { kind: 'plain', icon: 'x', primary: bids.length === 0 }),
+      ],
+      doors: false,
+    };
   }
 
   private describeSide(side: TradeSide): string {
@@ -657,41 +866,21 @@ export class GameScreen {
       : `<p>${cs.game.tradeNothing}</p>`;
   }
 
-  private renderIncomingTrade(s: GameState): string {
+  private decideTrade(s: GameState): Decision {
     const offer = s.trade!;
-    return `
-      <h3>${cs.game.tradeIncoming(escapeHtml(s.players[offer.from]!.name))}</h3>
-      <div class="trade-summary">
-        <div><strong>${cs.game.tradeYouGet}</strong>${this.describeSide(offer.give)}</div>
-        <div><strong>${cs.game.tradeYouGive}</strong>${this.describeSide(offer.get)}</div>
-      </div>
-      ${button(cs.game.tradeAccept, 'acceptTrade')}
-      ${button(cs.game.tradeReject, 'rejectTrade', '', true)}`;
-  }
-
-  private renderFooter(): string {
-    const speeds = (['normal', 'fast', 'turbo'] as const)
-      .map(
-        (speed) =>
-          `<button class="chip${speed === this.speed ? ' on' : ''}" data-action="speed" data-speed="${speed}">${
-            speed === 'normal'
-              ? cs.game.speedNormal
-              : speed === 'fast'
-                ? cs.game.speedFast
-                : cs.game.speedTurbo
-          }</button>`,
-      )
-      .join('');
-    // Rychlost je jen pro sólo: u společného stolu by ji jeden hráč vnutil ostatním.
-    const speedRow = this.role === 'solo' ? `<span>${cs.game.speed}</span>${speeds}` : '';
-    return `
-      <section class="panel footer">
-        <div class="row between">
-          <div class="row">${speedRow}</div>
-          <button class="chip" data-action="quit">${cs.game.quit}</button>
-        </div>
-        <small>${cs.game.hints}</small>
-      </section>`;
+    return {
+      key: `trade${offer.from}`,
+      prompt: `${cs.game.tradeIncoming(escapeHtml(s.players[offer.from]!.name))}
+        <span class="trade-summary">
+          <span><strong>${cs.game.tradeYouGet}</strong>${this.describeSide(offer.give)}</span>
+          <span><strong>${cs.game.tradeYouGive}</strong>${this.describeSide(offer.get)}</span>
+        </span>`,
+      actions: [
+        act(cs.game.tradeAccept, 'acceptTrade', { kind: 'go', icon: 'check' }),
+        act(cs.game.tradeReject, 'rejectTrade', { kind: 'plain', icon: 'x', primary: true }),
+      ],
+      doors: false,
+    };
   }
 
   /** Karta pozemku: záhlaví v barvě města, nájmy a u vlastních pozemků správa. */
@@ -709,6 +898,12 @@ export class GameScreen {
         const level = deed?.level ?? 0;
         const whole = deed?.owner != null && ownsWholeGroup(s, deed.owner, id);
         const owned = deed?.owner != null && !deed.mortgaged;
+        // Při rozhodování stačí dvě čísla, celý ceník je po kliknutí na políčko.
+        if (!withControls) {
+          row(cs.tile.rentBase, formatMoney(tile.rents[0]!));
+          row(cs.tile.rentHotel, formatMoney(tile.rents[HOTEL_LEVEL]!));
+          break;
+        }
         row(cs.tile.rentBase, formatMoney(tile.rents[0]!), owned && level === 0 && !whole);
         row(cs.tile.rentSet, formatMoney(tile.rents[0]! * 2), owned && level === 0 && whole);
         for (let n = 1; n < HOTEL_LEVEL; n++) {
@@ -760,45 +955,49 @@ export class GameScreen {
     }
     const manage: string[] = [];
     if (withControls && deed?.owner === this.me) {
+      const data = `data-tile-id="${id}"`;
       if (tile.kind === 'property') {
         if (canBuild(s, this.me, id)) {
           manage.push(
-            button(
-              cs.tile.build(formatMoney(buildCost(s, this.me, id))),
-              'build',
-              `data-tile-id="${id}"`,
-            ),
+            act(cs.tile.build(formatMoney(buildCost(s, this.me, id))), 'build', {
+              kind: 'go',
+              icon: 'hammer',
+              attrs: data,
+            }),
           );
         }
         if (BUSINESS && canBribeBuild(s, this.me, id)) {
           const rules = BUSINESS.build;
-          const label = cs.biz.bribeBuild(
-            formatMoney(bribeCost(s, this.me, rules)),
-            bribeRiskPct(s, this.me, rules),
+          manage.push(
+            act(cs.biz.bribeBuild, 'bribeBuild', {
+              kind: 'black',
+              icon: 'envelope',
+              sub: cs.biz.bribeSub(formatMoneyShort(bribeCost(s, this.me, rules))),
+              risk: bribeRiskPct(s, this.me, rules),
+              tip: cs.biz.bribeBuildTip,
+              attrs: data,
+            }),
           );
-          manage.push(button(label, 'bribeBuild', `data-tile-id="${id}"`));
         }
         if (canSellBuilding(s, this.me, id)) {
           const value = formatMoney(Math.floor(tile.houseCost / 2));
-          manage.push(button(cs.tile.sell(value), 'sellBuilding', `data-tile-id="${id}"`));
+          manage.push(act(cs.tile.sell(value), 'sellBuilding', { kind: 'legal', attrs: data }));
         }
       }
       if (canMortgage(s, this.me, id)) {
         manage.push(
-          button(
-            cs.tile.mortgage(formatMoney(mortgageValue(id))),
-            'mortgage',
-            `data-tile-id="${id}"`,
-          ),
+          act(cs.tile.mortgage(formatMoney(mortgageValue(id))), 'mortgage', {
+            kind: 'legal',
+            attrs: data,
+          }),
         );
       }
       if (canUnmortgage(s, this.me, id)) {
         manage.push(
-          button(
-            cs.tile.unmortgage(formatMoney(unmortgageCost(id))),
-            'unmortgage',
-            `data-tile-id="${id}"`,
-          ),
+          act(cs.tile.unmortgage(formatMoney(unmortgageCost(id))), 'unmortgage', {
+            kind: 'legal',
+            attrs: data,
+          }),
         );
       }
     }
@@ -922,6 +1121,30 @@ export class GameScreen {
     return cs.game.quitConfirm;
   }
 
+  /** Mezerník přeskočí scénu, Esc zavře okno. V minihře patří klávesy jí. */
+  private handleKey(event: KeyboardEvent): void {
+    if (this.minigameRunning) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('input, select, textarea')) return;
+    if (event.key === 'Escape') {
+      if (this.panel) this.panel = null;
+      else if (this.historyOpen) this.historyOpen = false;
+      else if (this.draft) this.draft = null;
+      else if (this.selectedTile !== null) this.selectedTile = null;
+      else return;
+      this.render();
+      return;
+    }
+    if (event.key !== ' ' && event.key !== 'Enter') return;
+    // Podržená klávesa nesmí omylem zahrát další tah.
+    const skipping = this.director.busy;
+    if (skipping || event.repeat) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (skipping && !event.repeat) this.director.skip();
+  }
+
   private onClick(event: MouseEvent): void {
     const target = event.target as HTMLElement;
     const actionEl = target.closest<HTMLElement>('[data-action]');
@@ -987,11 +1210,23 @@ export class GameScreen {
       case 'pumpDump':
         this.send({ type: action, player, group: el.dataset.group as GroupId });
         return;
-      case 'openBusiness':
-        this.businessOpen = true;
+      case 'skipBeat':
+        this.director.skip();
+        return;
+      case 'openMarket':
+        this.panel = 'market';
         break;
-      case 'closeBusiness':
-        this.businessOpen = false;
+      case 'openBackroom':
+        this.panel = 'backroom';
+        break;
+      case 'closePanel':
+        this.panel = null;
+        break;
+      case 'openHistory':
+        this.historyOpen = true;
+        break;
+      case 'closeHistory':
+        this.historyOpen = false;
         break;
       case 'closeTile':
         this.selectedTile = null;

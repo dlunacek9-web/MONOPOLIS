@@ -51,6 +51,15 @@ Pořadí fází: 2 → 3 → 4 → 5 a dál. Multiplayer jde před byznysovou vr
 - [x] Společné rozhraní miniher, AI a lidský controller, auto-resolve
 - [x] Rapier a honička autem
 
+## Mezifáze — Přestavba rozhraní
+
+- [x] Režisér událostí: scény se přehrávají po jedné, boti čekají, mezerník přeskakuje
+- [x] Animace koulení kostek, tažení karet, razítka a oznámení
+- [x] Postavy s bublinami: úředník, policajt, makléř, pračkař, stavbyvedoucí, dražebník, exekutor, kámoš
+- [x] Vzhled deskovka a podsvětí: různá tlačítka pro legální tahy, černý byznys a burzu
+- [x] Burza a Zadní místnost jako samostatné obrazovky, spodní lišta se třemi dveřmi
+- [x] Společný úvod a závěr miniher
+
 ## Fáze 6 — Útěk z vězení, live aukce a vyjednávání
 
 - [ ] Útěk z vězení

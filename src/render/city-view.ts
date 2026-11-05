@@ -191,13 +191,23 @@ export class CityView {
     this.resize();
   }
 
-  update(state: GameState, me: PlayerId, selected: TileId | null): void {
+  /**
+   * Překreslí město podle stavu. Události po `upToSeq` zatím nechá ležet: auta vyjedou,
+   * až na ně přijde řada v přehrávaných scénách.
+   */
+  update(
+    state: GameState,
+    me: PlayerId,
+    selected: TileId | null,
+    upToSeq = Number.POSITIVE_INFINITY,
+  ): void {
     for (const event of state.events) {
       if (event.seq <= this.lastSeq) continue;
+      if (event.seq > upToSeq) break;
       this.lastSeq = event.seq;
       this.applyEvent(event);
     }
-    this.reconcileCars(state);
+    if (upToSeq >= state.eventSeq) this.reconcileCars(state);
     this.scheduleIdle();
 
     this.actor = actorOf(state);

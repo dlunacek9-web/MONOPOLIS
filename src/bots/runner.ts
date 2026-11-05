@@ -11,6 +11,8 @@ export class BotRunner {
   constructor(
     private readonly transport: GameTransport,
     private readonly delayMs: (state: GameState) => number,
+    /** Dokud se přehrávají scény, bot nehraje: člověk musí stihnout vidět, co se stalo. */
+    private readonly isBlocked: () => boolean = () => false,
   ) {
     this.unsubscribe = transport.subscribe(() => this.schedule());
     this.schedule();
@@ -36,6 +38,10 @@ export class BotRunner {
     if (actor === null || !playerOf(state, actor).bot) return;
     this.timer = setTimeout(() => {
       this.timer = null;
+      if (this.isBlocked()) {
+        this.schedule();
+        return;
+      }
       const current = this.transport.getState();
       const currentActor = actorOf(current);
       if (currentActor === null || !playerOf(current, currentActor).bot) return;
