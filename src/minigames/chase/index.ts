@@ -1,5 +1,6 @@
 import { BUSINESS, type Action, type PlayerId } from '../../core';
 import { cs } from '../../i18n/cs';
+import { endPanel, introPanel, showEnd as showEndPanel } from '../shell';
 import type { Minigame, MinigameContext } from '../types';
 import { perCar, policeController, trafficController } from './ai';
 import { BOUND, GRID, PITCH, ROAD, createMap } from './map';
@@ -137,18 +138,15 @@ function hudMarkup(): string {
       <div class="mg-speed"><b></b><small>${t.unit}</small></div>
     </div>
     <div class="mg-count" hidden></div>
-    <div class="mg-panel mg-intro">
-      <h2>${t.introTitle}</h2>
-      <p>${t.introGoal}</p>
-      <p><small>${t.introKeys}</small></p>
-      <button class="btn primary" data-mg="start" disabled>${t.start}</button>
-      <button class="btn" data-mg="skip">${SKIP_LABEL()}</button>
-    </div>
-    <div class="mg-panel mg-end" hidden>
-      <h2></h2>
-      <p></p>
-      <button class="btn primary" data-mg="resume">${t.resume}</button>
-    </div>`;
+    ${introPanel({
+      title: t.introTitle,
+      who: 'cop',
+      bubble: t.introBubble,
+      goal: t.introGoal,
+      keys: t.introKeys,
+      skipLabel: SKIP_LABEL(),
+    })}
+    ${endPanel()}`;
 }
 
 /** Jedno spuštění honičky: úvod, odpočet, jízda a výsledek. */
@@ -209,11 +207,13 @@ function run({ host, input, signal }: MinigameContext<ChaseInput>): Promise<Chas
 
     const showEnd = (outcome: ChaseOutcome) => {
       const t = cs.chase;
-      const panel = find('.mg-end');
-      panel.hidden = false;
-      panel.classList.toggle('won', outcome === 'escaped');
-      find('.mg-end h2').textContent = outcome === 'escaped' ? t.escaped : t.caught;
-      find('.mg-end p').textContent = outcome === 'escaped' ? t.escapedText : t.caughtText;
+      const won = outcome === 'escaped';
+      showEndPanel(root, {
+        won,
+        title: won ? t.escaped : t.caught,
+        text: won ? t.escapedText : t.caughtText,
+        who: 'cop',
+      });
       panelButton('resume').onclick = () => finish(outcome);
     };
 
@@ -263,6 +263,7 @@ function run({ host, input, signal }: MinigameContext<ChaseInput>): Promise<Chas
         view.render(0);
         const start = panelButton('start');
         start.disabled = false;
+        start.textContent = cs.chase.start;
         start.onclick = () => play(sim!, view!);
       })
       .catch((error: unknown) => {
