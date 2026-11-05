@@ -169,6 +169,12 @@ export class CityView {
     return performance.now() < this.timelineEnd;
   }
 
+  /** Během minihry město nekreslí, ať se o výkon nedělí dvě 3D scény. */
+  setPaused(paused: boolean): void {
+    this.lastFrame = performance.now();
+    this.renderer.setAnimationLoop(paused ? null : () => this.frame());
+  }
+
   /** Jak dlouho ještě auta pojedou. Boti s dalším tahem počkají. */
   get remainingMs(): number {
     return Math.max(0, this.timelineEnd - performance.now());

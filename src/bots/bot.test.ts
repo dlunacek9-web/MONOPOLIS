@@ -57,12 +57,37 @@ describe('byznysová vrstva u botů', () => {
       'bribePolice',
       'buyShares',
       'sellShares',
-      'pumpDump',
+      'payRent',
+      'flee',
+      'chaseSkip',
     ]) {
       expect(seen, type).toContain(type);
     }
     const average = rounds.reduce((a, b) => a + b, 0) / rounds.length;
     expect(average).toBeLessThan(150);
+  }, 30_000);
+});
+
+describe('pump & dump u botů', () => {
+  it('zločinec s akciemi, černými a rezervou na pokutu pumpuje', () => {
+    const s = createGame(
+      { mode: 'nextlevel', win: { type: 'lastStanding' } },
+      [
+        { name: 'A', bot: { personality: 'kriminalnik', difficulty: 'normal' } },
+        { name: 'B', bot: { personality: 'kriminalnik', difficulty: 'normal' } },
+      ],
+      5,
+    );
+    const me = s.active;
+    const p = s.players[me]!;
+    p.dirty = 100_000;
+    p.cash = 1_000_000;
+    p.shares.most = { count: 10, cost: 100_000 };
+    const types = new Set<string>();
+    for (let turn = 1; turn <= 200; turn++) {
+      types.add(chooseBotAction({ ...s, turn }, me).type);
+    }
+    expect(types).toContain('pumpDump');
   });
 });
 

@@ -439,3 +439,17 @@ describe('převzetí místa v pravidlech', () => {
     expect(next.events.at(-1)).toMatchObject({ type: 'controller', previous: 'B', bot: true });
   });
 });
+
+describe('zprávy honičky', () => {
+  it('host smí poslat rozhodnutí a výsledek, ale jen ve správném tvaru', () => {
+    const parse = (action: unknown) => parseGuestMessage({ type: 'action', action });
+    for (const type of ['payRent', 'flee', 'chaseSkip']) {
+      expect(parse({ type, player: 1 })).toEqual({ type: 'action', action: { type, player: 1 } });
+    }
+    expect(parse({ type: 'chaseResult', player: 1, escaped: true })).toEqual({
+      type: 'action',
+      action: { type: 'chaseResult', player: 1, escaped: true },
+    });
+    expect(parse({ type: 'chaseResult', player: 1, escaped: 'ano' })).toBeNull();
+  });
+});

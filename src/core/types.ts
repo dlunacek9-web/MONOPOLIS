@@ -60,6 +60,8 @@ export interface Player {
   dirty: number;
   shares: Partial<Record<GroupId, Holding>>;
   archetype: Archetype | null;
+  /** Od kterého kola smí hráč znovu ujíždět před nájmem. */
+  nextChaseRound: number;
 }
 
 /** Akcie jedné firmy. `cost` je celková pořizovací cena držených kusů. */
@@ -121,7 +123,8 @@ export interface TradeOffer {
   get: TradeSide;
 }
 
-export type Phase = 'awaitRoll' | 'awaitBuy' | 'awaitTax' | 'awaitEnd' | 'gameOver';
+export type Phase =
+  'awaitRoll' | 'awaitBuy' | 'awaitTax' | 'awaitRent' | 'chase' | 'awaitEnd' | 'gameOver';
 export type BribeKind = 'official' | 'police' | 'build';
 export type BustReason = BribeKind | 'launder' | 'pump';
 
@@ -173,12 +176,20 @@ export type GameEventBody =
     }
   | { type: 'pump'; player: PlayerId; group: GroupId; price: number }
   | { type: 'dump'; player: PlayerId; group: GroupId; price: number }
+  | { type: 'chaseStart'; player: PlayerId; owner: PlayerId; tile: TileId }
+  | { type: 'chaseEnd'; player: PlayerId; owner: PlayerId; tile: TileId; escaped: boolean }
   | { type: 'controller'; player: PlayerId; previous: string; bot: boolean };
 
 export type GameEvent = GameEventBody & { seq: number };
 
 export interface GameStats {
   biggestRent: { player: PlayerId; amount: number } | null;
+}
+
+export interface PendingRent {
+  tile: TileId;
+  owner: PlayerId;
+  amount: number;
 }
 
 export interface GameState {
@@ -216,6 +227,8 @@ export interface GameState {
   launderedTiles: TileId[];
   /** Daň čekající na rozhodnutí hráče, jestli uplatí úředníka. */
   pendingTax: { tile: TileId; amount: number } | null;
+  /** Nájem čekající na rozhodnutí hráče. Během honičky je to to, oč se hraje. */
+  pendingRent: PendingRent | null;
 }
 
 export type Action =
@@ -245,6 +258,12 @@ export type Action =
   | { type: 'buyShares'; player: PlayerId; group: GroupId; count: number }
   | { type: 'sellShares'; player: PlayerId; group: GroupId; count: number }
   | { type: 'pumpDump'; player: PlayerId; group: GroupId }
+  | { type: 'payRent'; player: PlayerId }
+  | { type: 'flee'; player: PlayerId }
+  /** Výsledek odehrané honičky. */
+  | { type: 'chaseResult'; player: PlayerId; escaped: boolean }
+  /** Honička bez hraní: rozhodne seedovaný generátor. */
+  | { type: 'chaseSkip'; player: PlayerId }
   /** Místo u stolu přebírá člověk nebo bot. Posílá jen hostitel, nikdy hráč po síti. */
   | { type: 'setController'; player: PlayerId; name: string; bot: BotConfig | null };
 
@@ -306,6 +325,12 @@ export interface BusinessRules {
   };
   /** Poplatek bez archetypu je v `launderFeePct`, archetypy ho mohou přebít. */
   launderFeePct: number;
+  chase: {
+    /** Šance na útěk, když se honička nehraje. */
+    autoEscapePct: number;
+    cooldownRounds: number;
+    caughtRentFactor: number;
+  };
   perks: Record<Archetype, Partial<ArchetypePerks>>;
 }
 

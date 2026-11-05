@@ -189,12 +189,23 @@ Každá minihra je plugin s `start(context) → Promise<result>`, AI a lidským 
 
 Délka podle důležitosti: běžné situace (honička, útěk z vězení) jsou krátké arkády na 30–60 sekund, velké heisty jsou delší mise o více fázích. Obojí se dá přeskočit přes `autoResolve()`. Minihry běží ve 3D ve stejném stylu jako město (viz kapitola 10).
 
-| Minihra              | Spouštěč                  | Výsledek                                | Auto-resolve (návrh) |
-| -------------------- | ------------------------- | --------------------------------------- | -------------------- |
-| Honička autem        | Cizí pozemek, místo nájmu | Ujedeš: neplatíš. Chytí tě: dvojnásobek | Šance na útěk 45 %   |
-| Útěk z vězení        | Místo čekání              | Ven zdarma, nebo pokuta a tah ve vězení | Šance 40 %           |
-| Live aukce           | Odmítnutá koupě           | Pozemek za nejvyšší příhoz              | Tahová dražba        |
-| Tower defense hotelu | Heist na hotel            | Obrana, nebo ztráta peněz               | 50 % ± rozdíl úrovní |
+| Minihra              | Spouštěč                  | Výsledek                                        | Auto-resolve (návrh) |
+| -------------------- | ------------------------- | ----------------------------------------------- | -------------------- |
+| Honička autem        | Cizí pozemek, místo nájmu | Ujedeš: neplatíš. Chytí tě: dvojnásobek a vazba | Šance na útěk 45 %   |
+| Útěk z vězení        | Místo čekání              | Ven zdarma, nebo pokuta a tah ve vězení         | Šance 40 %           |
+| Live aukce           | Odmítnutá koupě           | Pozemek za nejvyšší příhoz                      | Tahová dražba        |
+| Tower defense hotelu | Heist na hotel            | Obrana, nebo ztráta peněz                       | 50 % ± rozdíl úrovní |
+
+### Honička autem
+
+Jen v režimu Next level. Po příjezdu na cizí nezastavený pozemek se hráč rozhodne, jestli zaplatí, nebo ujede. Jeden hráč smí ujíždět jednou za 3 kola, jinak se nájem platí hned.
+
+- **Cíl:** za 45 s dojet ulicemi města k dálnici.
+- **Chycení:** policie hráče zastaví, nebo vyprší čas. Hráč zaplatí dvojnásobek nájmu a jde do vazby.
+- **Ovládání:** arkádová jízda, WASD nebo šipky, mezerník na smyk, Shift na nitro.
+- **Boti a přeskočení:** bot se nehraje, rozhodne `autoResolve()` se šancí 45 %. Člověk může honičku přeskočit před startem za stejných podmínek.
+- **Multiplayer:** honičku počítá jen počítač ujíždějícího hráče, policii řídí AI a ostatní dostanou výsledek.
+- **Vzhled:** low-poly s plochým stínováním, jednolitý opar a tlusté bílé číslice v HUD. Grafickou referencí je nálada hry Grapples Galore, ale modely a prostředí jsou vlastní a žádné její mechaniky nepřebíráme.
 
 ## 9. Progrese
 

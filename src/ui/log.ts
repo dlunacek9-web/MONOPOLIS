@@ -36,6 +36,12 @@ export function formatEvent(s: GameState, e: GameEvent): string {
       return l.buy(name(s, e.player), tile(e.tile), formatMoney(e.price));
     case 'decline':
       return l.decline(name(s, e.player), tile(e.tile));
+    case 'chaseStart':
+      return cs.chase.logStart(name(s, e.player), tile(e.tile));
+    case 'chaseEnd':
+      return e.escaped
+        ? cs.chase.logEscaped(name(s, e.player), name(s, e.owner))
+        : cs.chase.logCaught(name(s, e.player));
     case 'rent':
       return l.rent(name(s, e.player), name(s, e.owner), tile(e.tile), formatMoney(e.amount));
     case 'mortgagedNoRent':

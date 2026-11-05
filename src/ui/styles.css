@@ -1219,3 +1219,157 @@ td:last-child {
   padding: 3px 8px;
   font-size: 0.8rem;
 }
+
+/* Minihry: celá obrazovka nad městem. */
+.minigame {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: #ecd3a8;
+  user-select: none;
+}
+
+.mg-scene,
+.mg-scene canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.mg-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: #fff;
+  font-weight: 900;
+  text-shadow: 0 2px 0 #0005;
+}
+
+.mg-timer {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 46px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mg-timer.low {
+  color: #ff5a5a;
+}
+
+.mg-map {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 200px;
+  height: 200px;
+  border-radius: 8px;
+}
+
+.mg-nitro,
+.mg-arrest {
+  display: grid;
+  gap: 6px;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+}
+
+.mg-nitro {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  width: 240px;
+}
+
+.mg-arrest {
+  position: absolute;
+  top: 84px;
+  left: 50%;
+  width: min(420px, 60%);
+  transform: translateX(-50%);
+  text-align: center;
+  color: #ffd9d9;
+}
+
+.mg-nitro i,
+.mg-arrest i {
+  --v: 0;
+  display: block;
+  height: 12px;
+  background: linear-gradient(#fff, #fff) left / calc(var(--v) * 100%) 100% no-repeat #0005;
+  border-radius: 6px;
+}
+
+.mg-arrest i {
+  background-image: linear-gradient(#ff3b3b, #ff3b3b);
+}
+
+.mg-speed {
+  position: absolute;
+  right: 24px;
+  bottom: 18px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mg-speed b {
+  font-size: 56px;
+}
+
+.mg-speed small {
+  font-size: 18px;
+}
+
+.mg-count {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 150px;
+  font-weight: 900;
+  text-shadow: 0 6px 0 #0005;
+  pointer-events: none;
+}
+
+.mg-count[hidden],
+.mg-hud[hidden],
+.mg-panel[hidden],
+.mg-arrest[hidden] {
+  display: none;
+}
+
+.mg-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(460px, 90%);
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.mg-panel h2,
+.mg-panel p {
+  margin: 0;
+}
+
+.mg-end h2 {
+  font-size: 40px;
+  font-weight: 900;
+  color: var(--danger);
+}
+
+.mg-end.won h2 {
+  color: #2ee6b6;
+}

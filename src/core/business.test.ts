@@ -90,6 +90,7 @@ describe('nájem na ruku', () => {
 /** Hráč 0 hodí ze startu 1 + 2 a dojede na pole 3. */
 function landOnThree(s: GameState): GameState {
   s.phase = 'awaitRoll';
+  s.players[0]!.nextChaseRound = 9999;
   for (let seed = 0; seed < 1_000_000; seed++) {
     const probe = { rng: seed } as GameState;
     if (randomInt(probe, 6) === 0 && randomInt(probe, 6) === 1) {

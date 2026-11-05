@@ -141,6 +141,7 @@ export const NEXTLEVEL: Ruleset = {
       bankruptPct: -15,
       noisePct: 3,
     },
+    chase: { autoEscapePct: 45, cooldownRounds: 3, caughtRentFactor: 2 },
     perks: {
       developer: { buildDiscountPct: 15 },
       kryptobro: { profitBonusPct: 20, pumpSwingPct: 50 },
