@@ -201,6 +201,58 @@ function chooseBid(s: GameState, me: PlayerId): Action {
   return { type: 'bid', player: me, amount };
 }
 
+/** Příhoz nebo pas bota v živé dražbě a kolik si s ním dá načas. */
+export interface LiveMove {
+  action: Action;
+  delayMs: number;
+}
+
+const SNIPE_SHARE = 0.35;
+const JUMP_SHARE = 0.25;
+const SILENT_SHARE = 0.5;
+/** Blafující bot přeplácí nejvýš o tolik nad to, co mu pozemek opravdu stojí za to. */
+const BLUFF_MAX_EXTRA = 0.4;
+
+/**
+ * Tah bota v živé dražbě, `null` znamená, že zatím mlčí. Vidí jen to co člověk a rozhodnutí
+ * závisí jen na stavu. Blafuje dvěma způsoby: přihazuje nad svou cenu v naději, že soupeře
+ * vyžene výš, a mlčí, takže nejde poznat, jestli už skončil, nebo číhá na poslední chvíli.
+ * Blaf je opravdové riziko: když soupeř couvne, bot předražený pozemek zaplatí.
+ */
+export function chooseLiveMove(s: GameState, me: PlayerId): LiveMove | null {
+  const auction = s.auction;
+  if (!auction?.live || !auction.bidders.includes(me) || auction.leader === me) return null;
+  const { traits } = botOf(s, me);
+  // Stejná dražba, stejná povaha: bot si styl nemění s každým příhozem.
+  const trait = (salt: number) => hashToUnit(s.rng, s.turn, auction.tile, me, salt);
+  const moment = (salt: number) =>
+    hashToUnit(s.rng, s.turn, auction.tile, me, auction.bid, auction.gavel, salt);
+
+  const bluffing = trait(1) < 0.1 + traits.crime * 0.6;
+  const worth = tileValue(s, me, auction.tile) * traits.auctionFactor;
+  const ceiling = bluffing ? worth * (1 + trait(2) * BLUFF_MAX_EXTRA) : worth;
+  const limit =
+    Math.floor(Math.min(playerOf(s, me).cash - traits.buyReserve / 2, ceiling) / MONEY_UNIT) * MONEY_UNIT;
+  const needed = minBid(s);
+  if (needed > limit) {
+    if (trait(3) < SILENT_SHARE) return null;
+    return { action: { type: 'passBid', player: me }, delayMs: 900 + moment(4) * 2000 };
+  }
+
+  // Číhající bot přihazuje až po klepnutí kladívka, ale stihne to dřív než další klepnutí.
+  const sniper = trait(5) < SNIPE_SHARE;
+  const waitForKnocks = trait(6) < 0.5 ? 1 : 2;
+  if (sniper && auction.gavel < waitForKnocks) return null;
+  const delayMs = sniper ? 350 + moment(7) * 700 : 700 + moment(7) * 1300;
+
+  const bump =
+    Math.floor(((ownablePrice(auction.tile) ?? 0) * 0.15) / (5 * MONEY_UNIT)) * (5 * MONEY_UNIT);
+  // Velký skok má soupeře zastrašit. Bot ho zkouší, jen když má z čeho.
+  const jump = moment(8) < JUMP_SHARE ? 3 : 1;
+  const amount = Math.min(limit, Math.max(needed, auction.bid + Math.max(bump, MIN_BID_STEP) * jump));
+  return { action: { type: 'bid', player: me, amount }, delayMs };
+}
+
 function manage(s: GameState, me: PlayerId): Action | null {
   const p = playerOf(s, me);
   const { traits } = botOf(s, me);

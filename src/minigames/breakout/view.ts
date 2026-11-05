@@ -24,6 +24,8 @@ import {
 import type { Material, Object3D } from 'three';
 import { box, cylinder, floatingRock, glow, group, tenement } from '../../render/models';
 import { PALETTE } from '../../render/palette';
+import { figure } from '../figure';
+import type { Figure } from '../figure';
 import { GATE_WIDTH, HALF_X, HALF_Z } from './map';
 import type { Obstacle, Point } from './map';
 import { VISION_HALF_ANGLE, VISION_RANGE } from './sim';
@@ -36,7 +38,6 @@ const NIGHT = {
   line: '#d8cdb4',
   jumpsuit: '#f08a24',
   uniform: '#2f3c63',
-  skin: '#e8b48c',
   beam: '#fff2c4',
   visionCalm: '#ffd65a',
   visionAlert: '#ff3b3b',
@@ -55,46 +56,11 @@ const WALK_SWING = 0.9;
 const WALL_HEIGHT = 2.2;
 const SOUTH_WALL_HEIGHT = 1;
 
-interface Figure {
-  root: Group;
-  legs: [Group, Group];
-  arms: [Group, Group];
-  phase: number;
-}
-
 interface GuardVisual {
   guard: Guard;
   figure: Figure;
   mark: Group;
   fan: Mesh<BufferGeometry, MeshBasicMaterial>;
-}
-
-function limb(color: string, x: number, y: number, length: number, width: number): Group {
-  const pivot = new Group();
-  pivot.position.set(x, y, 0);
-  pivot.add(box(width, length, width, color, 0, -length, 0));
-  return pivot;
-}
-
-/** Postavička s přehnanou hlavou. Rameno a nohy se kývají kolem kloubů. */
-function figure(body: string, cap: string): Figure {
-  const legs: [Group, Group] = [
-    limb(body, -0.22, 0.8, 0.8, 0.28),
-    limb(body, 0.22, 0.8, 0.8, 0.28),
-  ];
-  const arms: [Group, Group] = [
-    limb(body, -0.5, 1.6, 0.72, 0.22),
-    limb(body, 0.5, 1.6, 0.72, 0.22),
-  ];
-  const root = group(
-    ...legs,
-    ...arms,
-    box(0.8, 0.85, 0.5, body, 0, 0.8, 0),
-    box(0.62, 0.56, 0.6, NIGHT.skin, 0, 1.65, 0),
-    box(0.72, 0.2, 0.7, cap, 0, 2.2, 0),
-    box(0.42, 0.08, 0.26, cap, 0, 2.2, 0.42),
-  );
-  return { root, legs, arms, phase: 0 };
 }
 
 function swing(f: Figure, speed: number, dt: number): void {

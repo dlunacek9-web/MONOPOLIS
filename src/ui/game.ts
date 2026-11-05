@@ -38,7 +38,9 @@ import { cs, formatMoney, formatMoneyShort } from '../i18n/cs';
 import { BotRunner } from '../bots/runner';
 import type { GameTransport } from '../net/transport';
 import { publishGameEnd, summarizeGame } from '../profile/profile';
+import { auctionMinigame } from '../minigames/auction';
 import { breakoutMinigame } from '../minigames/breakout';
+import { LiveAuctionRunner } from '../bots/auction-runner';
 import { chaseMinigame } from '../minigames/chase';
 import type { Minigame } from '../minigames/types';
 import { CityView } from '../render/city-view';
@@ -137,6 +139,8 @@ export class GameScreen {
   private speed: Speed = 'normal';
   private endPublished = false;
   private minigameRunning = false;
+  private liveAuctionOpen = false;
+  private readonly liveAuctions: LiveAuctionRunner | null;
   private readonly minigameAbort = new AbortController();
   private readonly lines: { text: string; color: string }[] = [];
   private headline: { text: string; color: string } = { text: '', color: 'transparent' };
@@ -221,6 +225,13 @@ export class GameScreen {
             (s) => this.delay(s),
             () => this.director.busy || (this.view?.busy ?? false),
           );
+    this.liveAuctions =
+      role === 'guest'
+        ? null
+        : new LiveAuctionRunner(
+            this.transport,
+            () => this.director.busy || (this.view?.busy ?? false),
+          );
     this.root.onclick = (event) => this.onClick(event);
     this.root.oninput = (event) => this.onInput(event);
     this.root.onsubmit = (event) => this.onSubmit(event);
@@ -243,6 +254,7 @@ export class GameScreen {
     this.unsubscribeAck();
     this.clearOtherLimit();
     this.bots?.stop();
+    this.liveAuctions?.stop();
     this.director.stop();
     this.view?.dispose();
     document.removeEventListener('keydown', this.onKey, true);
@@ -482,6 +494,11 @@ export class GameScreen {
   /** Spustí minihru, když ji má hrát tento člověk a scény i auto už doběhly. */
   private syncMinigame(): void {
     const s = this.state;
+    if (this.liveAuctionOpen) return;
+    if (s.auction?.live) {
+      this.syncLiveAuction(s);
+      return;
+    }
     const mine = s.active === this.me && !s.players[this.me]?.bot;
     if (s.phase !== 'chase' && s.phase !== 'breakout') {
       this.minigameRunning = false;
@@ -493,16 +510,32 @@ export class GameScreen {
       seed: (s.rng ^ s.turn) | 0,
       color: PLAYER_COLORS[this.me] ?? '#ffffff',
     };
-    if (s.phase === 'chase') this.runMinigame(chaseMinigame, input);
-    else this.runMinigame(breakoutMinigame, input);
+    if (s.phase === 'chase') void this.runMinigame(chaseMinigame, input);
+    else void this.runMinigame(breakoutMinigame, input);
+  }
+
+  /** Živou dražbu vidí každý člověk u stolu, ne jen ten, kdo je na tahu. */
+  private syncLiveAuction(s: GameState): void {
+    const me = s.players[this.me];
+    if (!me || me.bot || me.bankrupt) return;
+    if (this.director.busy || this.view?.busy) return;
+    this.liveAuctionOpen = true;
+    void this.runMinigame(auctionMinigame, {
+      player: this.me,
+      transport: this.transport,
+    }).then(() => {
+      this.liveAuctionOpen = false;
+      this.minigameRunning = false;
+      this.render();
+    });
   }
 
   /** Společné spuštění všech miniher: pauza města, hra, zápis výsledku běžnou akcí. */
-  private runMinigame<Input, Result>(game: Minigame<Input, Result>, input: Input): void {
+  private runMinigame<Input, Result>(game: Minigame<Input, Result>, input: Input): Promise<void> {
     this.minigameRunning = true;
     this.hint.hidden = true;
     this.view?.setPaused(true);
-    game
+    return game
       .start({ host: this.root, input, signal: this.minigameAbort.signal })
       .then(
         (result) => game.resultAction(input, result),
@@ -514,7 +547,7 @@ export class GameScreen {
       .then((action) => {
         if (this.minigameAbort.signal.aborted) return;
         this.view?.setPaused(false);
-        this.send(action);
+        if (action) this.send(action);
       })
       .catch((error: unknown) => console.warn('Výsledek minihry nejde zapsat.', error));
   }
@@ -709,6 +742,9 @@ export class GameScreen {
     const none: Decision = { key: 'none', actions: [], doors: false };
     if (s.phase === 'gameOver') return none;
     if (me.bankrupt) return { ...none, key: 'out', prompt: t.youBankrupt, tone: 'wait' };
+    if (s.auction?.live) {
+      return { ...none, key: 'auctionLive', prompt: t.prompt.auction, tone: 'wait', deed: s.auction.tile };
+    }
     const actor = actorOf(s);
     if (s.trade?.from === this.me) {
       return {

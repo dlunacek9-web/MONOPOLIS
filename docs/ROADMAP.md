@@ -64,7 +64,7 @@ Pořadí fází: 2 → 3 → 4 → 5 a dál. Multiplayer jde před byznysovou vr
 ## Fáze 6 — Útěk z vězení, live aukce a vyjednávání
 
 - [x] Útěk z vězení
-- [ ] Aukce v reálném čase, boti blafují
+- [x] Aukce v reálném čase, boti blafují
 - [ ] Protinabídky v obchodech
 
 ## Fáze 7 — Heisty a tower defense hotelu

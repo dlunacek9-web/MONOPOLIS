@@ -106,6 +106,10 @@ export interface Auction {
   leader: PlayerId | null;
   bidders: PlayerId[];
   index: number;
+  /** Živá dražba: přihazuje kdokoli kdykoli a konec určuje kladívko. Jinak se draží po řadě. */
+  live: boolean;
+  /** Kolikrát kladívko klepnulo od posledního příhozu. */
+  gavel: number;
 }
 
 export interface TradeSide {
@@ -157,7 +161,7 @@ export type GameEventBody =
       how: 'bail' | 'card' | 'doubles' | 'forced' | 'bribe' | 'breakout';
     }
   | { type: 'threeDoubles'; player: PlayerId }
-  | { type: 'auctionStart'; tile: TileId }
+  | { type: 'auctionStart'; tile: TileId; live: boolean }
   | { type: 'bid'; player: PlayerId; amount: number }
   | { type: 'passBid'; player: PlayerId }
   | { type: 'auctionWon'; player: PlayerId; tile: TileId; amount: number }
@@ -252,6 +256,8 @@ export type Action =
   | { type: 'decline'; player: PlayerId }
   | { type: 'bid'; player: PlayerId; amount: number }
   | { type: 'passBid'; player: PlayerId }
+  /** Klepnutí kladívkem živé dražby. Posílá jen časovač hostitele, `player` je první dražitel. */
+  | { type: 'auctionGavel'; player: PlayerId }
   | { type: 'build'; player: PlayerId; tile: TileId }
   | { type: 'sellBuilding'; player: PlayerId; tile: TileId }
   | { type: 'mortgage'; player: PlayerId; tile: TileId }
