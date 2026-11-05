@@ -44,6 +44,13 @@ export type Beat = BeatBase &
     | { kind: 'toast'; amount: number | null; quip: boolean }
   );
 
+/** Karty, postavy, razítka a velká oznámení čekají, až je hráč odklikne. Kostky a auto ne. */
+export function waitsForClick(beat: Beat): boolean {
+  return (
+    beat.kind === 'card' || beat.kind === 'scene' || beat.kind === 'stamp' || beat.kind === 'banner'
+  );
+}
+
 const MS = {
   turn: 850,
   dice: 1250,
@@ -300,7 +307,7 @@ export function beatsFor(s: GameState, events: readonly GameEvent[], me: PlayerI
       case 'chaseStart':
         beats.push(
           e.player === me
-            ? banner('bad', MS.turn)
+            ? toast()
             : scene('police', 'cop', [pick(cs.scene.chase, e.seq)], null, 'siren'),
         );
         break;

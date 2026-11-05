@@ -1678,6 +1678,22 @@ td:last-child {
   background: #1a0f0822;
 }
 
+.dismiss {
+  display: grid;
+  justify-items: center;
+  min-width: 190px;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 18px;
+  animation: rise 0.25s both;
+}
+
+.dismiss small {
+  font-family: 'Rubik', sans-serif;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
 .skip-hint {
   position: fixed;
   left: 50%;

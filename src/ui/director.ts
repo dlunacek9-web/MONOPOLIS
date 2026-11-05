@@ -2,8 +2,11 @@
 export interface DirectorHooks<State, Beat> {
   /** Scéna začíná. */
   play(beat: Beat): void;
-  /** Jak dlouho scéna trvá, v milisekundách. Volá se až po `play`, takže může záviset na něm. */
-  duration(beat: Beat, backlog: number): number;
+  /**
+   * Jak dlouho scéna trvá, v milisekundách. `hold` znamená, že čeká na `skip()`, tedy na klik.
+   * Volá se až po `play`, takže může záviset na něm.
+   */
+  duration(beat: Beat, backlog: number): number | 'hold';
   /** Začíná poslední scéna dávky: rozhraní už smí ukázat nový stav hry. */
   settle(state: State): void;
   /** Všechno je dohrané. */
@@ -24,12 +27,13 @@ export class Director<State, Beat> {
   private readonly queue: Batch<State, Beat>[] = [];
   private batch: Batch<State, Beat> | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private holding = false;
   private stopped = false;
 
   constructor(private readonly hooks: DirectorHooks<State, Beat>) {}
 
   get busy(): boolean {
-    return this.timer !== null || this.batch !== null || this.queue.length > 0;
+    return this.timer !== null || this.holding || this.batch !== null || this.queue.length > 0;
   }
 
   /** Stav, ke kterému patří právě hraná scéna. */
@@ -40,14 +44,15 @@ export class Director<State, Beat> {
   enqueue(state: State, beats: Beat[]): void {
     if (this.stopped) return;
     this.queue.push({ state, beats, next: 0 });
-    if (this.timer === null) this.advance();
+    if (this.timer === null && !this.holding) this.advance();
   }
 
-  /** Přeskočí právě hranou scénu. */
+  /** Přeskočí právě hranou scénu, nebo potvrdí tu, která čeká na klik. */
   skip(): void {
-    if (this.timer === null) return;
-    clearTimeout(this.timer);
+    if (this.timer === null && !this.holding) return;
+    if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
+    this.holding = false;
     this.advance();
   }
 
@@ -55,6 +60,7 @@ export class Director<State, Beat> {
     this.stopped = true;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
+    this.holding = false;
     this.batch = null;
     this.queue.length = 0;
   }
@@ -83,6 +89,10 @@ export class Director<State, Beat> {
       this.hooks.play(beat);
       if (last) this.batch = null;
       const ms = this.hooks.duration(beat, this.backlog());
+      if (ms === 'hold') {
+        this.holding = true;
+        return;
+      }
       if (ms > 0) {
         this.timer = setTimeout(() => {
           this.timer = null;
