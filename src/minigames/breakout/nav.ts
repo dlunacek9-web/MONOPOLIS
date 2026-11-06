@@ -1,5 +1,5 @@
 import { HALF_X, HALF_Z } from './map';
-import type { Obstacle, Point } from './map';
+import type { Point, Rect } from '../topdown';
 
 const CELL = 1;
 /** Odstup středu postavy od překážek. */
@@ -18,17 +18,26 @@ const NEIGHBORS: readonly (readonly [number, number])[] = [
 
 /** Hledání cesty po mřížce dvora pro bachaře i pro testovacího hráče. */
 export class YardNav {
-  private readonly width = Math.floor((HALF_X * 2) / CELL);
-  private readonly height = Math.floor((HALF_Z * 2) / CELL);
+  private readonly halfX: number;
+  private readonly halfZ: number;
+  private readonly width: number;
+  private readonly height: number;
   private readonly blocked: Uint8Array;
   private readonly fields = new Map<number, Int16Array>();
 
-  constructor(obstacles: readonly Obstacle[]) {
+  constructor(
+    obstacles: readonly Rect[],
+    bounds: { halfX: number; halfZ: number } = { halfX: HALF_X, halfZ: HALF_Z },
+  ) {
+    this.halfX = bounds.halfX;
+    this.halfZ = bounds.halfZ;
+    this.width = Math.floor((this.halfX * 2) / CELL);
+    this.height = Math.floor((this.halfZ * 2) / CELL);
     this.blocked = new Uint8Array(this.width * this.height);
     for (let row = 0; row < this.height; row++) {
       for (let col = 0; col < this.width; col++) {
         const { x, z } = this.center(col + row * this.width);
-        const edge = Math.abs(x) > HALF_X - CLEARANCE || Math.abs(z) > HALF_Z - CLEARANCE;
+        const edge = Math.abs(x) > this.halfX - CLEARANCE || Math.abs(z) > this.halfZ - CLEARANCE;
         const inside = obstacles.some(
           (o) => Math.abs(x - o.x) < o.hx + CLEARANCE && Math.abs(z - o.z) < o.hz + CLEARANCE,
         );
@@ -40,13 +49,13 @@ export class YardNav {
   private center(index: number): Point {
     const col = index % this.width;
     const row = Math.floor(index / this.width);
-    return { x: (col + 0.5) * CELL - HALF_X, z: (row + 0.5) * CELL - HALF_Z };
+    return { x: (col + 0.5) * CELL - this.halfX, z: (row + 0.5) * CELL - this.halfZ };
   }
 
   /** Nejbližší průchozí políčko. Postava stojící těsně u zdi může být nad zablokovaným. */
   private cellAt(at: Point): number {
-    const col = Math.max(0, Math.min(this.width - 1, Math.floor((at.x + HALF_X) / CELL)));
-    const row = Math.max(0, Math.min(this.height - 1, Math.floor((at.z + HALF_Z) / CELL)));
+    const col = Math.max(0, Math.min(this.width - 1, Math.floor((at.x + this.halfX) / CELL)));
+    const row = Math.max(0, Math.min(this.height - 1, Math.floor((at.z + this.halfZ) / CELL)));
     for (let radius = 0; radius <= 4; radius++) {
       for (let dr = -radius; dr <= radius; dr++) {
         for (let dc = -radius; dc <= radius; dc++) {

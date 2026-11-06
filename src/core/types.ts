@@ -62,6 +62,8 @@ export interface Player {
   archetype: Archetype | null;
   /** Od kterého kola smí hráč znovu ujíždět před nájmem. */
   nextChaseRound: number;
+  /** Od kterého kola smí hráč jít na další heist. */
+  nextHeistRound: number;
 }
 
 /** Akcie jedné firmy. `cost` je celková pořizovací cena držených kusů. */
@@ -82,6 +84,14 @@ export interface Pump {
 export interface Market {
   prices: Record<GroupId, number>;
   pumps: Pump[];
+}
+
+/** Běžící heist. `resume` je fáze tahu, do které se hra po heistu vrátí. */
+export interface ActiveHeist {
+  target: HeistTarget;
+  /** Pole vykrádaného hotelu, u banky `null`. */
+  tile: TileId | null;
+  resume: 'awaitRoll' | 'awaitEnd';
 }
 
 /** Vlastnictví pozemku. `level` je 0–4 domů, 5 znamená hotel. */
@@ -134,10 +144,12 @@ export type Phase =
   | 'awaitRent'
   | 'chase'
   | 'breakout'
+  | 'heist'
   | 'awaitEnd'
   | 'gameOver';
 export type BribeKind = 'official' | 'police' | 'build';
-export type BustReason = BribeKind | 'launder' | 'pump';
+export type BustReason = BribeKind | 'launder' | 'pump' | 'heist';
+export type HeistTarget = 'hotel' | 'bank';
 
 export type GameEventBody =
   | { type: 'gameStart' }
@@ -196,6 +208,15 @@ export type GameEventBody =
   | { type: 'chaseEnd'; player: PlayerId; owner: PlayerId; tile: TileId; escaped: boolean }
   | { type: 'breakoutStart'; player: PlayerId }
   | { type: 'breakoutEnd'; player: PlayerId; escaped: boolean; fine: number }
+  | { type: 'heistStart'; player: PlayerId; target: HeistTarget; tile: TileId | null }
+  | {
+      type: 'heistEnd';
+      player: PlayerId;
+      target: HeistTarget;
+      escaped: boolean;
+      bags: number;
+      loot: number;
+    }
   | { type: 'controller'; player: PlayerId; previous: string; bot: boolean };
 
 export type GameEvent = GameEventBody & { seq: number };
@@ -249,6 +270,8 @@ export interface GameState {
   pendingTax: { tile: TileId; amount: number } | null;
   /** Nájem čekající na rozhodnutí hráče. Během honičky je to to, oč se hraje. */
   pendingRent: PendingRent | null;
+  /** Heist, který se právě hraje. */
+  heist: ActiveHeist | null;
 }
 
 export type Action =
@@ -293,6 +316,12 @@ export type Action =
   | { type: 'breakoutResult'; player: PlayerId; escaped: boolean }
   /** Útěk bez hraní: rozhodne seedovaný generátor. */
   | { type: 'breakoutSkip'; player: PlayerId }
+  /** Start heistu na banku, nebo na hotel soupeře. */
+  | { type: 'heist'; player: PlayerId; target: HeistTarget; tile: TileId | null }
+  /** Výsledek odehraného heistu: jestli hráč ujel a s kolika pytli. */
+  | { type: 'heistResult'; player: PlayerId; escaped: boolean; bags: number }
+  /** Heist bez hraní: rozhodne seedovaný generátor. */
+  | { type: 'heistSkip'; player: PlayerId }
   /** Místo u stolu přebírá člověk nebo bot. Posílá jen hostitel, nikdy hráč po síti. */
   | { type: 'setController'; player: PlayerId; name: string; bot: BotConfig | null };
 
@@ -312,6 +341,18 @@ export interface BribeRules {
   cost: number;
   riskPct: number;
   fine: number;
+}
+
+/** Čísla jednoho druhu heistu. První pytel vynese `baseLoot`, každý další `bagLoot`. */
+export interface HeistRules {
+  baseLoot: number;
+  bagLoot: number;
+  maxBags: number;
+  /** Šance na odhalení, když hráč neujede. */
+  riskPct: number;
+  fine: number;
+  /** Šance na únik, když se minihra nehraje. */
+  autoEscapePct: number;
 }
 
 export interface ArchetypePerks {
@@ -365,6 +406,7 @@ export interface BusinessRules {
     autoEscapePct: number;
     fine: number;
   };
+  heist: { cooldownRounds: number } & Record<HeistTarget, HeistRules>;
   perks: Record<Archetype, Partial<ArchetypePerks>>;
 }
 

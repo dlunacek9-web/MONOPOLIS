@@ -1,3 +1,4 @@
+import { clamp, distance, pushOut, rayLength, wrapAngle } from '../topdown';
 import { HALF_X, HALF_Z, createYard } from './map';
 import type { Point, YardMap } from './map';
 import { YardNav } from './nav';
@@ -69,21 +70,6 @@ const ALARM_FROM_SPOT = 0.55;
 const ALARM_FROM_GUARD_FAR = 0.55;
 const ALARM_FROM_GUARD_NEAR = 1.3;
 const ALARM_DECAY = 0.2;
-/** Krok paprsku při zjišťování, jestli překážka zakrývá výhled. */
-const RAY_STEP = 0.25;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function wrapAngle(angle: number): number {
-  return Math.atan2(Math.sin(angle), Math.cos(angle));
-}
-
-function distance(a: Point, b: Point): number {
-  return Math.hypot(a.x - b.x, a.z - b.z);
-}
-
 /** Pravidla jednoho útěku přes dvůr. Nezná Three.js ani DOM, takže jde pustit i v testu. */
 export class BreakoutSim {
   readonly map: YardMap;
@@ -177,24 +163,9 @@ export class BreakoutSim {
     if (!this.hasKey && distance(p, this.map.key) < KEY_RADIUS) this.hasKey = true;
   }
 
-  /** Vytlačí hráče z překážek a zdí. Kruh proti obdélníku, hráč po zdi klouže. */
+  /** Vytlačí hráče z překážek a zdí. */
   private pushOut(p: Prisoner): void {
-    for (const o of this.map.obstacles) {
-      const dx = p.x - clamp(p.x, o.x - o.hx, o.x + o.hx);
-      const dz = p.z - clamp(p.z, o.z - o.hz, o.z + o.hz);
-      const gap = Math.hypot(dx, dz);
-      if (gap >= PRISONER_RADIUS) continue;
-      if (gap > 0) {
-        p.x += (dx / gap) * (PRISONER_RADIUS - gap);
-        p.z += (dz / gap) * (PRISONER_RADIUS - gap);
-      } else {
-        // Střed je uvnitř: ven nejkratší stranou.
-        const toX = o.hx - Math.abs(p.x - o.x);
-        const toZ = o.hz - Math.abs(p.z - o.z);
-        if (toX < toZ) p.x += Math.sign(p.x - o.x || 1) * (toX + PRISONER_RADIUS);
-        else p.z += Math.sign(p.z - o.z || 1) * (toZ + PRISONER_RADIUS);
-      }
-    }
+    pushOut(p, this.map.obstacles, PRISONER_RADIUS);
     p.x = clamp(p.x, -HALF_X + PRISONER_RADIUS, HALF_X - PRISONER_RADIUS);
     p.z = clamp(p.z, -HALF_Z + PRISONER_RADIUS, HALF_Z - PRISONER_RADIUS);
   }
@@ -351,15 +322,6 @@ export class BreakoutSim {
 
   /** Jak daleko dohlédne paprsek, než narazí na překážku. */
   rayLength(from: Point, angle: number, limit: number): number {
-    const dx = Math.sin(angle);
-    const dz = Math.cos(angle);
-    for (let d = RAY_STEP; d < limit; d += RAY_STEP) {
-      const x = from.x + dx * d;
-      const z = from.z + dz * d;
-      for (const o of this.map.obstacles) {
-        if (Math.abs(x - o.x) < o.hx && Math.abs(z - o.z) < o.hz) return d;
-      }
-    }
-    return limit;
+    return rayLength(this.map.obstacles, from, angle, limit);
   }
 }

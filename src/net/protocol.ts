@@ -89,6 +89,7 @@ function parseAction(value: unknown): Action | null {
     case 'chaseSkip':
     case 'breakout':
     case 'breakoutSkip':
+    case 'heistSkip':
       return { type: value.type, player };
     case 'chaseResult':
       return typeof value.escaped === 'boolean'
@@ -97,6 +98,15 @@ function parseAction(value: unknown): Action | null {
     case 'breakoutResult':
       return typeof value.escaped === 'boolean'
         ? { type: 'breakoutResult', player, escaped: value.escaped }
+        : null;
+    case 'heistResult':
+      return typeof value.escaped === 'boolean' && isCount(value.bags)
+        ? { type: 'heistResult', player, escaped: value.escaped, bags: value.bags }
+        : null;
+    case 'heist':
+      if (value.target === 'bank') return { type: 'heist', player, target: 'bank', tile: null };
+      return value.target === 'hotel' && isCount(value.tile)
+        ? { type: 'heist', player, target: 'hotel', tile: value.tile }
         : null;
     case 'bid':
       return isCount(value.amount) ? { type: 'bid', player, amount: value.amount } : null;

@@ -2507,6 +2507,99 @@ td:last-child {
   box-shadow: inset 0 0 160px 50px #ff2b2bb0;
 }
 
+.mg-timer.calm {
+  top: 34px;
+  font-size: 26px;
+  opacity: 0.85;
+}
+
+.hs-clean {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+}
+
+.hs-loot {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hs-loot b {
+  font-size: 16px;
+  letter-spacing: 0.06em;
+}
+
+.hs-loot strong {
+  font-size: 34px;
+}
+
+.hs-loot small {
+  font-size: 14px;
+  opacity: 0.85;
+}
+
+.hs-dial {
+  --center: 0rad;
+  --half: 0.5rad;
+  --needle: 0rad;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 220px;
+  height: 220px;
+  border: 8px solid #fff;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: conic-gradient(
+    from calc(var(--center) - var(--half)),
+    #2ee6b6 0 calc(var(--half) * 2),
+    #1d1d29e6 0
+  );
+  box-shadow: 0 8px 0 #0006;
+}
+
+.hs-dial i {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 8px;
+  height: 94px;
+  margin-left: -4px;
+  background: #fff;
+  border-radius: 4px;
+  transform-origin: 50% 94px;
+  transform: rotate(var(--needle));
+}
+
+.heist-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.heist-list h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 400;
+}
+
+.heist-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hs-clean[hidden],
+.hs-dial[hidden],
 .mg-count[hidden],
 .mg-hud[hidden],
 .mg-panel[hidden],

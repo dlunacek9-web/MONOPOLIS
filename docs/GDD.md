@@ -162,7 +162,7 @@ Hráč má bílé (hotovost) a černé. Černé jdou jen na úplatky, pump & dum
 
 Zdrojem je **nájem na ruku**: majitel si ho zapne u každého pozemku zvlášť. Nájemník platí stejnou částku, nejdřív svými černými, zbytek bílými. Majitel dostane všechno v černých a banka k tomu přidá 50 %. Na co nájemník nemá, to dluží v bílých. Obchod a bankrot nájem na ruku u pozemku vypnou.
 
-Proč to dává smysl: 100 Kč nájmu je 150 Kč černých, po praní 112,50 Kč bílých. Vyplatí se to, ale peníze nejsou hned k dispozici, pere se po malých částkách a s rizikem. Když je odhalen, přijde hráč o polovinu černých, takže se je nevyplatí hromadit. Od Fáze 7 přibudou heisty jako druhý zdroj.
+Proč to dává smysl: 100 Kč nájmu je 150 Kč černých, po praní 112,50 Kč bílých. Vyplatí se to, ale peníze nejsou hned k dispozici, pere se po malých částkách a s rizikem. Když je odhalen, přijde hráč o polovinu černých, takže se je nevyplatí hromadit. Druhým zdrojem jsou heisty.
 
 ### Nelegální akce
 
@@ -175,8 +175,8 @@ Nelegální akce jdou jen na svobodě, bez dluhu a mimo rozhodování o koupi ne
 | Úplatek policajtovi      | Okamžitý odchod z vazby, hráč hned hází              | 40 000 Kč          | 20 %              | Pokuta 100 000 Kč, tento tah se nehází           |
 | Úplatek stavebnímu úřadu | Stavba bez rovnoměrnosti                             | 50 000 Kč + stavba | 20 %              | Stavba se zbourá, pokuta 150 000 Kč, vazba       |
 | Pump & dump              | Cena akcie +30 %, po 2 tazích viníka −40 %           | 50 000 Kč černých  | 25 % při pádu     | Zisk z prodejů propadá, pokuta 200 000 Kč, vazba |
-| Heist na hotel (Fáze 7)  | 200 000–500 000 Kč černých                           | Minihra            | 30 % při prohře   | Pokuta 300 000 Kč, vazba                         |
-| Heist na banku (Fáze 7)  | 500 000–1 000 000 Kč černých                         | Minihra            | 45 % při prohře   | Pokuta 500 000 Kč, vazba                         |
+| Heist na hotel           | 200 000–500 000 Kč černých                           | Minihra            | 30 % při prohře   | Pokuta 300 000 Kč, vazba                         |
+| Heist na banku           | 500 000–1 000 000 Kč černých                         | Minihra            | 45 % při prohře   | Pokuta 500 000 Kč, vazba                         |
 
 Podnikem je každý vlastní nezastavený pozemek a každý vypere jednou za tah. Pokuta, na kterou hráč nemá, se stává běžným dluhem.
 
@@ -190,12 +190,13 @@ Každá minihra je plugin s `start(context) → Promise<result>`, AI a lidským 
 
 Délka podle důležitosti: běžné situace (honička, útěk z vězení) jsou krátké arkády na 30–60 sekund, velké heisty jsou delší mise o více fázích. Obojí se dá přeskočit přes `autoResolve()`. Minihry běží ve 3D ve stejném stylu jako město (viz kapitola 10).
 
-| Minihra              | Spouštěč                  | Výsledek                                        | Auto-resolve (návrh) |
-| -------------------- | ------------------------- | ----------------------------------------------- | -------------------- |
-| Honička autem        | Cizí pozemek, místo nájmu | Ujedeš: neplatíš. Chytí tě: dvojnásobek a vazba | Šance na útěk 45 %   |
-| Útěk z vězení        | Ve vazbě, místo hodu      | Ven zdarma, nebo pokuta a tah ve vězení         | Šance 40 %           |
-| Živá dražba          | Odmítnutá koupě, bankrot  | Pozemek za nejvyšší příhoz                      | Tahová dražba        |
-| Tower defense hotelu | Heist na hotel            | Obrana, nebo ztráta peněz                       | 50 % ± rozdíl úrovní |
+| Minihra              | Spouštěč                  | Výsledek                                        | Auto-resolve (návrh)   |
+| -------------------- | ------------------------- | ----------------------------------------------- | ---------------------- |
+| Honička autem        | Cizí pozemek, místo nájmu | Ujedeš: neplatíš. Chytí tě: dvojnásobek a vazba | Šance na útěk 45 %     |
+| Útěk z vězení        | Ve vazbě, místo hodu      | Ven zdarma, nebo pokuta a tah ve vězení         | Šance 40 %             |
+| Živá dražba          | Odmítnutá koupě, bankrot  | Pozemek za nejvyšší příhoz                      | Tahová dražba          |
+| Heist                | Zadní místnost            | Lup v černých, nebo riziko pokuty a vazby       | Hotel 50 %, banka 35 % |
+| Tower defense hotelu | Heist na hotel            | Obrana, nebo ztráta peněz                       | 50 % ± rozdíl úrovní   |
 
 ### Honička autem
 
@@ -221,6 +222,24 @@ Jen v režimu Next level. Ve vazbě může hráč místo hodu, kauce nebo úplat
 - **Boti a přeskočení:** bot se nehraje, rozhodne `autoResolve()` se šancí 40 %. Člověk může útěk přeskočit před startem za stejných podmínek. Bot to zkouší podle ochoty ke zločinu, jen když si může dovolit pokutu.
 - **Multiplayer:** útěk počítá jen počítač utíkajícího hráče a ostatní dostanou výsledek.
 - **Vzhled:** stejný low-poly jazyk, ale noční scéna, aby vynikly reflektory.
+
+### Heist
+
+Jen v režimu Next level. Spouští se ze Zadní místnosti na svém tahu, na svobodě, bez dluhu a mimo rozhodování o koupi nebo dani. Mezi heisty jednoho hráče musí uběhnout 6 kol. Banka jde vykrást vždy, hotel jen tehdy, když na desce stojí hotel soupeře. Lup jde z banky, majitel hotelu zatím o nic nepřichází, to přijde s tower defense.
+
+| Cíl   | První pytel | Další pytel | Pytlů | Zámků | Kamer | Poplach | Policistů | Odhalení při prohře | Pokuta  |
+| ----- | ----------- | ----------- | ----- | ----- | ----- | ------- | --------- | ------------------- | ------- |
+| Hotel | 200 000     | 100 000     | 4     | 2     | 2     | 26 s    | 4         | 30 %                | 300 000 |
+| Banka | 500 000     | 100 000     | 6     | 3     | 4     | 30 s    | 6         | 45 %                | 500 000 |
+
+- **Dovnitř:** hráč jde od dodávky halou k trezoru kolem kamer. Pohled kamery plní podezření, plné podezření spustí poplach dřív. Bez poplachu se po 75 s vystřídá ostraha a poplach přijde sám.
+- **Trezor:** u dveří hráč chytá ručičku v zeleném výseku, po zámcích je rychlejší a výsek menší. Stisk vedle přidá podezření a výsek se přesune. Otevření trezoru spustí poplach.
+- **Útěk s lupem:** po poplachu běží čas a přibývá policie, nejdřív zezadu, později z ulice. Většina pytlů je v trezoru, po jednom v kancelářích, které jde vybrat i před poplachem. Každý pytel zpomalí o 9 % a naložení chvíli trvá. Pytel jde odhodit a znovu sebrat.
+- **Konec:** hráč odjíždí dotykem dodávky, po poplachu i s prázdnou. Dotek policisty nebo vypršení času znamená konec bez lupu a hod na odhalení: pokuta, zabavení poloviny černých a vazba.
+- **Ovládání:** WASD nebo šipky, E nebo mezerník na trezor, zámek a pytel, Q odhodit pytel, Shift sprint.
+- **Boti a přeskočení:** bot se nehraje, rozhodne `autoResolve()`: hotel 50 %, banka 35 %, lup je náhodný a nikdy plný. Člověk může heist přeskočit za stejných podmínek. Na heist jde jen bot se sklonem ke zločinu, který unese pokutu, a to nejdřív od 4. kola.
+- **Multiplayer:** heist počítá jen počítač hrajícího hráče a ostatní dostanou výsledek.
+- **Vzhled:** stejný low-poly jazyk, noční scéna, po poplachu bliká červená a modrá.
 
 ### Živá dražba
 

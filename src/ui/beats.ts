@@ -102,6 +102,7 @@ const BUST_CHARACTER: Record<BustReason, CharacterId> = {
   build: 'foreman',
   launder: 'cop',
   pump: 'cop',
+  heist: 'cop',
 };
 
 /** Hledá v rozsahu stejné akce: co se stalo hned po této události. */
@@ -374,6 +375,29 @@ export function beatsFor(s: GameState, events: readonly GameEvent[], me: PlayerI
                 [e.escaped ? cs.scene.breakoutEscaped : cs.scene.breakoutCaught],
                 {
                   text: e.escaped ? cs.stamp.escaped : cs.stamp.arrested,
+                  good: e.escaped,
+                },
+                'siren',
+              ),
+        );
+        break;
+      case 'heistStart':
+        beats.push(
+          e.player === me
+            ? banner('bad', MS.turn)
+            : scene('police', 'cop', [pick(cs.scene.heist[e.target], e.seq)], null, 'siren'),
+        );
+        break;
+      case 'heistEnd':
+        beats.push(
+          e.player === me
+            ? toast(e.loot > 0 ? e.loot : null)
+            : scene(
+                'police',
+                'cop',
+                [e.escaped ? cs.scene.heistEscaped : cs.scene.heistCaught],
+                {
+                  text: e.escaped ? cs.stamp.looted : cs.stamp.arrested,
                   good: e.escaped,
                 },
                 'siren',

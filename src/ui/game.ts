@@ -42,6 +42,7 @@ import type { GameTransport } from '../net/transport';
 import { publishGameEnd, summarizeGame } from '../profile/profile';
 import { auctionMinigame } from '../minigames/auction';
 import { breakoutMinigame } from '../minigames/breakout';
+import { heistMinigame } from '../minigames/heist';
 import { LiveAuctionRunner } from '../bots/auction-runner';
 import { chaseMinigame } from '../minigames/chase';
 import type { Minigame } from '../minigames/types';
@@ -506,7 +507,7 @@ export class GameScreen {
       return;
     }
     const mine = s.active === this.me && !s.players[this.me]?.bot;
-    if (s.phase !== 'chase' && s.phase !== 'breakout') {
+    if (s.phase !== 'chase' && s.phase !== 'breakout' && s.phase !== 'heist') {
       this.minigameRunning = false;
       return;
     }
@@ -516,7 +517,8 @@ export class GameScreen {
       seed: (s.rng ^ s.turn) | 0,
       color: PLAYER_COLORS[this.me] ?? '#ffffff',
     };
-    if (s.phase === 'chase') void this.runMinigame(chaseMinigame, input);
+    if (s.heist) void this.runMinigame(heistMinigame, { ...input, target: s.heist.target });
+    else if (s.phase === 'chase') void this.runMinigame(chaseMinigame, input);
     else void this.runMinigame(breakoutMinigame, input);
   }
 
@@ -820,7 +822,7 @@ export class GameScreen {
     }
     if (s.phase === 'awaitTax' && s.pendingTax) return this.decideTax(s, s.pendingTax);
     if (s.phase === 'awaitRent' && s.pendingRent) return this.decideRent(s, s.pendingRent);
-    if (s.phase === 'chase' || s.phase === 'breakout') {
+    if (s.phase === 'chase' || s.phase === 'breakout' || s.phase === 'heist') {
       const prompt = this.waitingPrompt(s, escapeHtml(me.name));
       return { ...none, key: s.phase, prompt, tone: 'wait' };
     }
@@ -843,6 +845,7 @@ export class GameScreen {
   private waitingPrompt(s: GameState, name: string): string {
     if (s.phase === 'chase') return cs.chase.running(name);
     if (s.phase === 'breakout') return cs.breakout.running(name);
+    if (s.phase === 'heist') return cs.heist.running(name);
     return cs.game.waiting(name);
   }
 
@@ -1341,6 +1344,14 @@ export class GameScreen {
         return;
       case 'launder':
         this.send({ type: action, player, tile, amount: Number(el.dataset.amount) });
+        return;
+      case 'heist':
+        this.panel = null;
+        if (el.dataset.target === 'hotel') {
+          this.send({ type: action, player, target: 'hotel', tile });
+        } else {
+          this.send({ type: action, player, target: 'bank', tile: null });
+        }
         return;
       case 'buyShares':
       case 'sellShares':
