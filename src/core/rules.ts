@@ -46,6 +46,7 @@ export function actorOf(s: GameState): PlayerId | null {
 export function canManage(s: GameState, player: PlayerId): boolean {
   if (s.trade || s.auction) return false;
   if (s.phase === 'gameOver' || s.phase === 'chase' || s.phase === 'breakout') return false;
+  if (s.phase === 'heist') return false;
   return actorOf(s) === player && !playerOf(s, player).bankrupt;
 }
 

@@ -62,6 +62,8 @@ describe('byznysová vrstva u botů', () => {
       'chaseSkip',
       'breakout',
       'breakoutSkip',
+      'heist',
+      'heistSkip',
     ]) {
       expect(seen, type).toContain(type);
     }

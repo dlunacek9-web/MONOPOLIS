@@ -474,6 +474,21 @@ describe('zprávy honičky', () => {
       action: { type: 'chaseResult', player: 1, escaped: true },
     });
     expect(parse({ type: 'chaseResult', player: 1, escaped: 'ano' })).toBeNull();
+    expect(parse({ type: 'heist', player: 1, target: 'bank', tile: 3 })).toEqual({
+      type: 'action',
+      action: { type: 'heist', player: 1, target: 'bank', tile: null },
+    });
+    expect(parse({ type: 'heist', player: 1, target: 'hotel', tile: 39 })).toEqual({
+      type: 'action',
+      action: { type: 'heist', player: 1, target: 'hotel', tile: 39 },
+    });
+    expect(parse({ type: 'heist', player: 1, target: 'hotel' })).toBeNull();
+    expect(parse({ type: 'heist', player: 1, target: 'kasino', tile: 3 })).toBeNull();
+    expect(parse({ type: 'heistResult', player: 1, escaped: true, bags: 2 })).toEqual({
+      type: 'action',
+      action: { type: 'heistResult', player: 1, escaped: true, bags: 2 },
+    });
+    expect(parse({ type: 'heistResult', player: 1, escaped: true, bags: -1 })).toBeNull();
   });
 
   describe('odklikávání scén', () => {

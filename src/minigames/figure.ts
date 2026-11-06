@@ -1,7 +1,8 @@
-import { Group } from 'three';
+import { DoubleSide, Group, MeshBasicMaterial } from 'three';
 import { box, group } from '../render/models';
 
 const SKIN = '#e8b48c';
+const WALK_SWING = 0.9;
 
 export interface Figure {
   root: Group;
@@ -36,4 +37,25 @@ export function figure(body: string, cap: string): Figure {
     box(0.42, 0.08, 0.26, cap, 0, 2.2, 0.42),
   );
   return { root, legs, arms, phase: 0 };
+}
+
+/** Kývání rukou a nohou podle rychlosti chůze. */
+export function swing(f: Figure, speed: number, dt: number): void {
+  f.phase += speed * dt * 1.5;
+  const angle = speed > 0 ? Math.sin(f.phase) * WALK_SWING : 0;
+  f.legs[0].rotation.x = angle;
+  f.legs[1].rotation.x = -angle;
+  f.arms[0].rotation.x = -angle;
+  f.arms[1].rotation.x = angle;
+}
+
+/** Průsvitná plocha na zemi nebo v prostoru: kužely pohledu a majáky cílů. */
+export function translucent(color: string, opacity: number): MeshBasicMaterial {
+  return new MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    depthWrite: false,
+    side: DoubleSide,
+  });
 }

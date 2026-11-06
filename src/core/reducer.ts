@@ -22,6 +22,9 @@ import {
   canBribeBuild,
   canBribeOfficial,
   canBreakout,
+  canHeist,
+  heistLoot,
+  heistRules,
   canBribePolice,
   canBuyShares,
   canLaunder,
@@ -127,6 +130,7 @@ export function createGame(
       shares: {},
       archetype: BUSINESS ? (setup.archetype ?? null) : null,
       nextChaseRound: 0,
+      nextHeistRound: 0,
     })),
     deeds,
     phase: 'awaitRoll',
@@ -155,6 +159,7 @@ export function createGame(
     launderedTiles: [],
     pendingTax: null,
     pendingRent: null,
+    heist: null,
   };
   s.decks.tip = shuffle(
     s,
@@ -348,6 +353,21 @@ function bust(s: GameState, player: PlayerId, reason: BustReason, fine: number):
   p.dirty -= seized;
   emit(s, { type: 'busted', player, reason, fine, seized });
   charge(s, player, null, fine);
+}
+
+/** Konec heistu. Ujetý hráč si nese lup v černých, chyceného může čekat pokuta a vazba. */
+function finishHeist(s: GameState, player: PlayerId, escaped: boolean, bags: number): void {
+  const { target, resume } = s.heist!;
+  const loot = escaped ? heistLoot(target, bags) : 0;
+  s.heist = null;
+  s.phase = resume;
+  playerOf(s, player).dirty += loot;
+  emit(s, { type: 'heistEnd', player, target, escaped, bags: escaped ? bags : 0, loot });
+  const { riskPct, fine } = heistRules(target);
+  if (!escaped && isCaught(s, riskPct)) {
+    bust(s, player, 'heist', fine);
+    sendToJail(s, player);
+  }
 }
 
 /** Úplatek se platí nejdřív černými, zbytek bílými. Dostupnost hlídají `canBribe…`. */
@@ -1121,6 +1141,37 @@ function apply(s: GameState, action: Action): void {
       if (s.phase !== 'breakout' || !BUSINESS) illegal('Neběží útěk');
       finishBreakout(s, player, randomInt(s, 100) < BUSINESS.breakout.autoEscapePct);
       break;
+    case 'heist':
+      if (!canHeist(s, player, action.target, action.tile) || !BUSINESS) illegal('Heist teď nejde');
+      s.heist = {
+        target: action.target,
+        tile: action.tile,
+        resume: s.phase === 'awaitEnd' ? 'awaitEnd' : 'awaitRoll',
+      };
+      s.phase = 'heist';
+      p.nextHeistRound = s.round + BUSINESS.heist.cooldownRounds;
+      emit(s, { type: 'heistStart', player, target: action.target, tile: action.tile });
+      break;
+    case 'heistResult': {
+      requirePlainTurn(s, player);
+      if (s.phase !== 'heist' || !s.heist) illegal('Neběží heist');
+      const { maxBags } = heistRules(s.heist.target);
+      if (typeof action.escaped !== 'boolean' || !Number.isInteger(action.bags)) {
+        illegal('Neplatný výsledek');
+      }
+      if (action.bags < 0 || action.bags > maxBags) illegal('Tolik pytlů neexistuje');
+      finishHeist(s, player, action.escaped, action.bags);
+      break;
+    }
+    case 'heistSkip': {
+      requirePlainTurn(s, player);
+      if (s.phase !== 'heist' || !s.heist) illegal('Neběží heist');
+      const { autoEscapePct, maxBags } = heistRules(s.heist.target);
+      // Přeskočení nikdy nedá plný lup, ten je odměna za hraní.
+      const escaped = randomInt(s, 100) < autoEscapePct;
+      finishHeist(s, player, escaped, 1 + randomInt(s, maxBags - 1));
+      break;
+    }
     case 'pumpDump': {
       if (!canPumpDump(s, player, action.group) || !BUSINESS) illegal('Pump & dump teď nejde');
       p.dirty -= BUSINESS.pump.cost;

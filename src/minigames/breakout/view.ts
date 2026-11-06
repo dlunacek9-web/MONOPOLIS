@@ -6,7 +6,6 @@ import {
   Color,
   ConeGeometry,
   DirectionalLight,
-  DoubleSide,
   Fog,
   Group,
   HemisphereLight,
@@ -24,7 +23,7 @@ import {
 import type { Material, Object3D } from 'three';
 import { box, cylinder, floatingRock, glow, group, tenement } from '../../render/models';
 import { PALETTE } from '../../render/palette';
-import { figure } from '../figure';
+import { figure, swing, translucent } from '../figure';
 import type { Figure } from '../figure';
 import { GATE_WIDTH, HALF_X, HALF_Z } from './map';
 import type { Obstacle, Point } from './map';
@@ -52,7 +51,6 @@ const FOLLOW_RANGE_X = 12;
 const FOLLOW_RANGE_Z = 9;
 const FOLLOW_RATE = 4;
 const VISION_RAYS = 18;
-const WALK_SWING = 0.9;
 const WALL_HEIGHT = 2.2;
 const SOUTH_WALL_HEIGHT = 1;
 
@@ -61,25 +59,6 @@ interface GuardVisual {
   figure: Figure;
   mark: Group;
   fan: Mesh<BufferGeometry, MeshBasicMaterial>;
-}
-
-function swing(f: Figure, speed: number, dt: number): void {
-  f.phase += speed * dt * 1.5;
-  const angle = speed > 0 ? Math.sin(f.phase) * WALK_SWING : 0;
-  f.legs[0].rotation.x = angle;
-  f.legs[1].rotation.x = -angle;
-  f.arms[0].rotation.x = -angle;
-  f.arms[1].rotation.x = angle;
-}
-
-function translucent(color: string, opacity: number): MeshBasicMaterial {
-  return new MeshBasicMaterial({
-    color,
-    transparent: true,
-    opacity,
-    depthWrite: false,
-    side: DoubleSide,
-  });
 }
 
 /** 3D podoba útěku: jen čte stav simulace, nic v ní nemění. */

@@ -1,14 +1,19 @@
 import {
   BUSINESS,
+  canHeist,
   canLaunder,
   canSetOffBooks,
+  heistCooldown,
+  heistHotels,
+  heistLoot,
+  heistRules,
   launderFeePct,
   launderLimit,
   launderNet,
   launderRiskPct,
   tilesOwnedBy,
 } from '../core';
-import type { GameState, PlayerId, TileId } from '../core';
+import type { GameState, HeistTarget, PlayerId, TileId } from '../core';
 import { cs, formatMoney, formatMoneyShort } from '../i18n/cs';
 import { tileColor } from './board';
 import { act } from './buttons';
@@ -51,6 +56,46 @@ function row(s: GameState, me: PlayerId, tile: TileId, amount: number): string {
     </div>`;
 }
 
+function heistButton(
+  s: GameState,
+  me: PlayerId,
+  target: HeistTarget,
+  tile: TileId | null,
+  label: string,
+): string {
+  const { maxBags, riskPct, fine } = heistRules(target);
+  const data = tile === null ? '' : ` data-tile-id="${tile}"`;
+  return act(label, 'heist', {
+    kind: 'danger',
+    icon: 'bars',
+    sub: cs.heist.actionSub(
+      formatMoneyShort(heistLoot(target, 1)),
+      formatMoneyShort(heistLoot(target, maxBags)),
+    ),
+    risk: riskPct,
+    tip: cs.heist.actionTip(formatMoney(fine)),
+    attrs: `data-target="${target}"${data}`,
+    disabled: !canHeist(s, me, target, tile),
+  });
+}
+
+/** Velká práce: banka je pořád, hotely jen ty, které stojí a patří soupeřům. */
+function renderHeists(s: GameState, me: PlayerId): string {
+  const hotels = heistHotels(s, me).map((tile) =>
+    heistButton(s, me, 'hotel', tile, cs.heist.hotel(cs.tiles[tile] ?? '')),
+  );
+  const cooldown = heistCooldown(s, me);
+  return `
+    <section class="heist-list">
+      <h3>${cs.heist.sectionTitle}</h3>
+      ${cooldown > 0 ? `<p class="wash-note">${cs.heist.cooldown(cooldown)}</p>` : ''}
+      <div class="heist-buttons">
+        ${heistButton(s, me, 'bank', null, cs.heist.bank)}
+        ${hotels.join('')}
+      </div>
+    </section>`;
+}
+
 export function renderBackroom(s: GameState, me: PlayerId): string {
   const amount = launderLimit(s, me);
   const tiles = tilesOwnedBy(s, me);
@@ -70,6 +115,7 @@ export function renderBackroom(s: GameState, me: PlayerId): string {
           ${renderBalance(s, me)}
           ${closeButton()}
         </header>
+        ${renderHeists(s, me)}
         ${body}
       </div>
     </div>`;

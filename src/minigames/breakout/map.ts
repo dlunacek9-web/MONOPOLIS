@@ -1,16 +1,12 @@
 import { randomFrom } from '../random';
+import type { Point, Rect } from '../topdown';
 
-export interface Point {
-  x: number;
-  z: number;
-}
+export type { Point };
 
 export type ObstacleKind = 'wall' | 'crates' | 'van' | 'shed';
 
-export interface Obstacle extends Point {
+export interface Obstacle extends Rect {
   kind: ObstacleKind;
-  hx: number;
-  hz: number;
 }
 
 export interface Patrol {

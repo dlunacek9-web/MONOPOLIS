@@ -6,6 +6,8 @@ import type {
   BusinessRules,
   GameState,
   GroupId,
+  HeistRules,
+  HeistTarget,
   Holding,
   PlayerId,
   Pump,
@@ -99,6 +101,44 @@ export function canBribePolice(s: GameState, player: PlayerId): boolean {
 export function canBreakout(s: GameState, player: PlayerId): boolean {
   if (!hasBusiness(s) || s.phase !== 'awaitRoll') return false;
   return canManage(s, player) && s.debts.length === 0 && playerOf(s, player).inJail;
+}
+
+export function heistRules(target: HeistTarget): HeistRules {
+  return rules().heist[target];
+}
+
+/** Lup za donesené pytle. Bez pytle není lup. */
+export function heistLoot(target: HeistTarget, bags: number): number {
+  const { baseLoot, bagLoot, maxBags } = heistRules(target);
+  return bags <= 0 ? 0 : baseLoot + (Math.min(bags, maxBags) - 1) * bagLoot;
+}
+
+/** Hotely soupeřů, které jde vykrást. */
+export function heistHotels(s: GameState, player: PlayerId): TileId[] {
+  const result: TileId[] = [];
+  s.deeds.forEach((deed, tile) => {
+    if (deed && deed.level === HOTEL_LEVEL && deed.owner !== null && deed.owner !== player) {
+      result.push(tile);
+    }
+  });
+  return result;
+}
+
+/** Za kolik kol smí hráč na další heist. Nula znamená hned. */
+export function heistCooldown(s: GameState, player: PlayerId): number {
+  return Math.max(0, playerOf(s, player).nextHeistRound - s.round);
+}
+
+/** Banka stojí pořád, hotel musí patřit soupeři. Mezi heisty musí uběhnout pár kol. */
+export function canHeist(
+  s: GameState,
+  player: PlayerId,
+  target: HeistTarget,
+  tile: TileId | null,
+): boolean {
+  if (!canDoCrime(s, player) || heistCooldown(s, player) > 0) return false;
+  if (target === 'bank') return tile === null;
+  return target === 'hotel' && tile !== null && heistHotels(s, player).includes(tile);
 }
 
 /** Stavba mimo pořadí. Když jde stavět normálně, úplatek nedává smysl a nenabízí se. */

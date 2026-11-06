@@ -143,6 +143,25 @@ export const NEXTLEVEL: Ruleset = {
     },
     chase: { autoEscapePct: 45, cooldownRounds: 3, caughtRentFactor: 2 },
     breakout: { autoEscapePct: 40, fine: 30_000 },
+    heist: {
+      cooldownRounds: 6,
+      hotel: {
+        baseLoot: 200_000,
+        bagLoot: 100_000,
+        maxBags: 4,
+        riskPct: 30,
+        fine: 300_000,
+        autoEscapePct: 50,
+      },
+      bank: {
+        baseLoot: 500_000,
+        bagLoot: 100_000,
+        maxBags: 6,
+        riskPct: 45,
+        fine: 500_000,
+        autoEscapePct: 35,
+      },
+    },
     perks: {
       developer: { buildDiscountPct: 15 },
       kryptobro: { profitBonusPct: 20, pumpSwingPct: 50 },

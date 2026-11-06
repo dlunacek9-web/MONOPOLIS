@@ -10,6 +10,8 @@ import {
   canBribeBuild,
   canBribeOfficial,
   canBreakout,
+  canHeist,
+  heistHotels,
   canBribePolice,
   canBuild,
   canBuyShares,
@@ -273,7 +275,8 @@ export function chooseLiveMove(s: GameState, me: PlayerId): LiveMove | null {
   const worth = tileValue(s, me, auction.tile) * traits.auctionFactor;
   const ceiling = bluffing ? worth * (1 + trait(2) * BLUFF_MAX_EXTRA) : worth;
   const limit =
-    Math.floor(Math.min(playerOf(s, me).cash - traits.buyReserve / 2, ceiling) / MONEY_UNIT) * MONEY_UNIT;
+    Math.floor(Math.min(playerOf(s, me).cash - traits.buyReserve / 2, ceiling) / MONEY_UNIT) *
+    MONEY_UNIT;
   const needed = minBid(s);
   if (needed > limit) {
     if (trait(3) < SILENT_SHARE) return null;
@@ -290,7 +293,10 @@ export function chooseLiveMove(s: GameState, me: PlayerId): LiveMove | null {
     Math.floor(((ownablePrice(auction.tile) ?? 0) * 0.15) / (5 * MONEY_UNIT)) * (5 * MONEY_UNIT);
   // Velký skok má soupeře zastrašit. Bot ho zkouší, jen když má z čeho.
   const jump = moment(8) < JUMP_SHARE ? 3 : 1;
-  const amount = Math.min(limit, Math.max(needed, auction.bid + Math.max(bump, MIN_BID_STEP) * jump));
+  const amount = Math.min(
+    limit,
+    Math.max(needed, auction.bid + Math.max(bump, MIN_BID_STEP) * jump),
+  );
   return { action: { type: 'bid', player: me, amount }, delayMs };
 }
 
@@ -369,6 +375,9 @@ function proposeTrade(s: GameState, me: PlayerId): Action | null {
 }
 
 /** Salt odděluje jednotlivá rozhodnutí v jednom tahu, ať nejsou všechna stejná. */
+/** Boti se do velké práce pouštějí až po rozjezdu, jinak by partii rozhodl první tah. */
+const BOT_HEIST_FROM_ROUND = 4;
+
 function dares(s: GameState, me: PlayerId, salt: number, chance: number): boolean {
   return hashToUnit(s.turn, me, salt) < chance;
 }
@@ -441,6 +450,25 @@ function chooseBribeBuild(s: GameState, me: PlayerId): Action | null {
   return null;
 }
 
+/**
+ * Na heist jde jen zločinec, který unese pokutu, a ne hned na začátku partie.
+ * Banku bere, když na ni má, jinak hotel.
+ */
+function chooseHeist(s: GameState, me: PlayerId): Action | null {
+  if (!BUSINESS || s.round < BOT_HEIST_FROM_ROUND) return null;
+  if (botOf(s, me).traits.crime < 0.5 || !dares(s, me, 9, 0.2)) return null;
+  const cash = playerOf(s, me).cash;
+  const { bank, hotel } = BUSINESS.heist;
+  if (cash >= bank.fine * 1.5 && canHeist(s, me, 'bank', null)) {
+    return { type: 'heist', player: me, target: 'bank', tile: null };
+  }
+  const tile = heistHotels(s, me)[0];
+  if (tile !== undefined && cash >= hotel.fine * 1.5 && canHeist(s, me, 'hotel', tile)) {
+    return { type: 'heist', player: me, target: 'hotel', tile };
+  }
+  return null;
+}
+
 /** Byznysová vrstva. Každá větev se v jednom tahu vyčerpá, takže bot nikdy neuvízne ve smyčce. */
 function chooseBusiness(s: GameState, me: PlayerId): Action | null {
   if (!BUSINESS || !s.market) return null;
@@ -457,6 +485,7 @@ function chooseBusiness(s: GameState, me: PlayerId): Action | null {
     chooseLaundering(s, me) ??
     choosePump(s, me) ??
     chooseBribeBuild(s, me) ??
+    chooseHeist(s, me) ??
     chooseInvestment(s, me)
   );
 }
@@ -557,6 +586,7 @@ export function chooseBotAction(s: GameState, me: PlayerId): Action {
   // Bot se nehraje, stejně jako když člověk honičku přeskočí.
   if (s.phase === 'chase') return { type: 'chaseSkip', player: me };
   if (s.phase === 'breakout') return { type: 'breakoutSkip', player: me };
+  if (s.phase === 'heist') return { type: 'heistSkip', player: me };
   if (s.phase === 'awaitRoll') return chooseRollPhase(s, me);
   return manage(s, me) ?? chooseBusiness(s, me) ?? { type: 'endTurn', player: me };
 }

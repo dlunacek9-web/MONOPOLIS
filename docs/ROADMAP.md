@@ -69,7 +69,7 @@ Pořadí fází: 2 → 3 → 4 → 5 a dál. Multiplayer jde před byznysovou vr
 
 ## Fáze 7 — Heisty a tower defense hotelu
 
-- [ ] Heist na hotel a banku
+- [x] Heist na hotel a banku
 - [ ] Tower defense hotelu
 
 ## Fáze 8 — Polish

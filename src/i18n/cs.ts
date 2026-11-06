@@ -2,6 +2,7 @@ import type {
   Archetype,
   BribeKind,
   BustReason,
+  HeistTarget,
   DeckId,
   Difficulty,
   GameMode,
@@ -320,6 +321,55 @@ export const cs = {
     alarm: 'POPLACH',
     sprint: 'SPRINT',
   },
+  heist: {
+    logStartBank: (name: string) => `${name} vyrazil s dodávkou k bance!`,
+    logStartHotel: (name: string, tile: string) => `${name} jde vybrat hotel na poli ${tile}!`,
+    logEscaped: (name: string, loot: string) => `${name} ujel s lupem ${loot} černých.`,
+    logEmpty: (name: string) => `${name} ujel s prázdnou.`,
+    logCaught: (name: string) => `${name} to nestihl a o lup přišel.`,
+    sectionTitle: 'Velká práce',
+    bank: 'Vykrást banku',
+    hotel: (tile: string) => `Vykrást hotel: ${tile}`,
+    actionSub: (from: string, to: string) => `lup ${from} až ${to}`,
+    actionTip: (fine: string) =>
+      `Vlezeš dovnitř, otevřeš trezor a utečeš s pytli. Čím víc pytlů, tím větší lup, ale tím pomaleji běžíš. Když tě chytí, přijdeš o lup a hrozí pokuta ${fine} a vazba.`,
+    cooldown: (rounds: number) =>
+      `Horko. Další práce za ${rounds} ${rounds === 1 ? 'kolo' : rounds < 5 ? 'kola' : 'kol'}.`,
+    running: (name: string) => `${name} má zrovna práci ve městě…`,
+    introTitle: { bank: 'Heist: banka', hotel: 'Heist: hotel' } satisfies Record<
+      HeistTarget,
+      string
+    >,
+    introBubble: 'Motor nechám běžet. Ale jak začne houkat, čekám jenom chvíli.',
+    introGoal: (seconds: number) =>
+      `Proklouzni kolem kamer k trezoru a otevři ho. Tím spustíš poplach a máš ${seconds} sekund. Naber pytle a doběhni k dodávce. Každý pytel přidá lup a zpomalí tě.`,
+    introKeys: [
+      { keys: ['W', 'A', 'S', 'D'], label: 'pohyb (nebo šipky)' },
+      { keys: ['E'], label: 'trezor, zámek a pytel (i mezerník)' },
+      { keys: ['Q'], label: 'odhodit pytel' },
+      { keys: ['Shift'], label: 'sprint' },
+    ],
+    start: 'Jdeme na to!',
+    skip: (pct: number) => `Přeskočit (šance na únik ${pct} %)`,
+    won: 'VYBRÁNO!',
+    wonEmpty: 'S PRÁZDNOU',
+    lost: 'CHYTILI TĚ!',
+    wonText: (loot: string) => `V dodávce je ${loot} černých.`,
+    wonEmptyText: 'Bez lupu, ale aspoň na svobodě.',
+    lostText: (risk: number, fine: string) =>
+      `Lup je pryč. S rizikem ${risk} % tě policie pozná: pokuta ${fine} a vazba.`,
+    toVault: 'Dostaň se k trezoru',
+    crackHint: 'Stiskni E u trezoru',
+    grab: 'E: sebrat pytel',
+    crack: (done: number, total: number) => `Zámek ${done + 1} z ${total}: stiskni E na zelené`,
+    loot: 'Ber pytle, nebo utíkej!',
+    toVan: 'K dodávce!',
+    suspicion: 'PODEZŘENÍ',
+    sprint: 'SPRINT',
+    bags: (count: number, max: number) => `Pytle ${count} z ${max}`,
+    weight: (pct: number) => `rychlost ${pct} %`,
+    cleanLeft: 'Střídání ostrahy',
+  },
   auctionLive: {
     topBid: 'Nejvyšší příhoz',
     noBid: 'Zatím nikdo',
@@ -465,6 +515,7 @@ export const cs = {
       build: 'Bourá se. Hned. Na tvoje náklady.',
       launder: 'Finančák se ptá, proč tvůj podnik vydělává bez zákazníků.',
       pump: 'Ten graf vypadá jako z učebnice podvodů.',
+      heist: 'Kamery tě mají z pěti úhlů. I s pytlem.',
     },
     laundry: ['Otočíme to přes kasu.', 'Program bavlna, šedesát stupňů.'],
     jail: ['Půjdeš s námi.', 'Tak jdeme, šéfe. Sedm pater dolů.'],
@@ -478,6 +529,12 @@ export const cs = {
     breakout: ['Prázdná cela! Spusťte reflektory!', 'Jeden nám leze přes dvůr!'],
     breakoutEscaped: 'V cele je jen peřina a vzkaz: Díky za všechno.',
     breakoutCaught: 'Máme ho. Procházka skončila.',
+    heist: {
+      bank: ['Přepadení banky! Všechny hlídky do centra!', 'Trezor je otevřený! Uzavřete ulici!'],
+      hotel: ['Hotel hlásí zloděje v trezoru!', 'Někdo vybírá recepci. Bez rezervace!'],
+    } satisfies Record<HeistTarget, string[]>,
+    heistEscaped: 'Dodávka zmizela. Prý v ní bylo prádlo.',
+    heistCaught: 'Máme ho. Pytle si nechal ukázat do protokolu.',
   },
   /** Razítka: krátká, velká a jen velkými písmeny. */
   stamp: {
@@ -491,6 +548,7 @@ export const cs = {
     crash: 'KRACH',
     escaped: 'UJEL',
     arrested: 'CHYCEN',
+    looted: 'VYBRÁNO',
   },
   tile: {
     price: 'Cena',
@@ -595,6 +653,7 @@ export const cs = {
       build: 'Černá stavba jde k zemi.',
       launder: 'Finančák přišel na praní.',
       pump: 'Policie rozkryla pump & dump.',
+      heist: 'Policie poznala lupiče na kamerách.',
     } satisfies Record<BustReason, string>,
     bustedPenalty: (name: string, fine: string, seized: string) =>
       `${name} platí pokutu ${fine}, zabaveno ${seized} černých.`,

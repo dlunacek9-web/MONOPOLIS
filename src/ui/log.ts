@@ -42,6 +42,15 @@ export function formatEvent(s: GameState, e: GameEvent): string {
       return e.escaped
         ? cs.chase.logEscaped(name(s, e.player), name(s, e.owner))
         : cs.chase.logCaught(name(s, e.player));
+    case 'heistStart':
+      return e.tile === null
+        ? cs.heist.logStartBank(name(s, e.player))
+        : cs.heist.logStartHotel(name(s, e.player), tile(e.tile));
+    case 'heistEnd':
+      if (!e.escaped) return cs.heist.logCaught(name(s, e.player));
+      return e.loot > 0
+        ? cs.heist.logEscaped(name(s, e.player), formatMoney(e.loot))
+        : cs.heist.logEmpty(name(s, e.player));
     case 'breakoutStart':
       return cs.breakout.logStart(name(s, e.player));
     case 'breakoutEnd':
