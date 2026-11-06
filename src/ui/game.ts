@@ -15,12 +15,14 @@ import {
   canBreakout,
   canBribePolice,
   canBuild,
+  canCounterTrade,
   canMortgage,
   canProposeTrade,
   canSellBuilding,
   canUnmortgage,
   hasBuildingsInGroup,
   hasBusiness,
+  isValidCounter,
   isValidTrade,
   minBid,
   mortgageValue,
@@ -66,6 +68,8 @@ interface TradeDraft {
   give: TradeSide;
   get: TradeSide;
   error: boolean;
+  /** Odpověď na cizí nabídku: protistrana je daná a posílá se protinabídka. */
+  counter: boolean;
 }
 
 export type GameRole = 'solo' | 'host' | 'guest';
@@ -482,6 +486,8 @@ export class GameScreen {
   }
 
   private renderOverlays(s: GameState): string {
+    // Nabídka mohla mezitím zmizet, třeba když hráče v multiplayeru převzal bot.
+    if (this.draft?.counter && s.trade?.to !== this.me) this.draft = null;
     return [
       this.draft ? this.renderTradeDialog(s, this.draft) : '',
       this.panel === 'market' ? renderMarket(s, this.me, this.prices) : '',
@@ -1000,15 +1006,20 @@ export class GameScreen {
 
   private decideTrade(s: GameState): Decision {
     const offer = s.trade!;
+    const canCounter = canCounterTrade(s);
     return {
-      key: `trade${offer.from}`,
-      prompt: `${cs.game.tradeIncoming(escapeHtml(s.players[offer.from]!.name))}
+      key: `trade${offer.from}-${s.tradeCounters}`,
+      prompt: `${(s.tradeCounters > 0 ? cs.game.tradeCounterIncoming : cs.game.tradeIncoming)(escapeHtml(s.players[offer.from]!.name))}
         <div class="trade-summary">
           <div><strong>${cs.game.tradeYouGet}</strong>${this.describeSide(offer.give)}</div>
           <div><strong>${cs.game.tradeYouGive}</strong>${this.describeSide(offer.get)}</div>
-        </div>`,
+        </div>
+        ${canCounter ? '' : `<p>${cs.game.tradeLastWord}</p>`}`,
       actions: [
         act(cs.game.tradeAccept, 'acceptTrade', { kind: 'go', icon: 'check' }),
+        ...(canCounter
+          ? [act(cs.game.tradeCounter, 'openCounter', { kind: 'plain', icon: 'hands' })]
+          : []),
         act(cs.game.tradeReject, 'rejectTrade', { kind: 'plain', icon: 'x', primary: true }),
       ],
       doors: false,
@@ -1201,16 +1212,16 @@ export class GameScreen {
     return `
       <div class="overlay">
         <form class="dialog trade" data-form="trade">
-          <h2>${cs.game.tradeTitle}</h2>
-          <label>${cs.game.tradeWith} <select data-trade-target>${targets}</select></label>
+          <h2>${draft.counter ? cs.game.tradeCounterTitle : cs.game.tradeTitle}</h2>
+          <label>${cs.game.tradeWith} <select data-trade-target${draft.counter ? ' disabled' : ''}>${targets}</select></label>
           <div class="trade-cols">
             ${this.renderTradeSide(s, this.me, 'give', draft)}
             ${this.renderTradeSide(s, draft.to, 'get', draft)}
           </div>
-          ${draft.error ? `<p class="error">${cs.game.tradeInvalid}</p>` : ''}
+          ${draft.error ? `<p class="error">${draft.counter ? cs.game.tradeCounterInvalid : cs.game.tradeInvalid}</p>` : ''}
           <div class="row">
             ${button(cs.game.tradeCancel, 'cancelTrade', 'type="button"')}
-            <button class="btn primary" type="submit">${cs.game.tradeSend}</button>
+            <button class="btn primary" type="submit">${draft.counter ? cs.game.tradeCounterSend : cs.game.tradeSend}</button>
           </div>
         </form>
       </div>`;
@@ -1366,7 +1377,21 @@ export class GameScreen {
         break;
       case 'openTrade': {
         const to = this.state.players.find((p) => !p.bankrupt && p.id !== this.me)!.id;
-        this.draft = { to, give: emptySide(), get: emptySide(), error: false };
+        this.draft = { to, give: emptySide(), get: emptySide(), error: false, counter: false };
+        break;
+      }
+      case 'openCounter': {
+        // Vychází z toho, co leží na stole, jen s prohozenými stranami.
+        const offer = this.state.trade;
+        if (offer) {
+          this.draft = {
+            to: offer.from,
+            give: { ...offer.get },
+            get: { ...offer.give },
+            error: false,
+            counter: true,
+          };
+        }
         break;
       }
       case 'cancelTrade':
@@ -1397,7 +1422,13 @@ export class GameScreen {
     const draft = this.draft;
     if (!draft) return;
     if (el.dataset.tradeTarget !== undefined) {
-      this.draft = { to: Number(el.value), give: draft.give, get: emptySide(), error: false };
+      this.draft = {
+        to: Number(el.value),
+        give: draft.give,
+        get: emptySide(),
+        error: false,
+        counter: false,
+      };
       this.render();
       return;
     }
@@ -1423,14 +1454,19 @@ export class GameScreen {
       return;
     }
     if (form.dataset.form === 'trade' && this.draft) {
-      const { to, give, get } = this.draft;
-      if (!isValidTrade(this.state, { from: this.me, to, give, get })) {
+      const { to, give, get, counter } = this.draft;
+      const offer = { from: this.me, to, give, get };
+      if (!(counter ? isValidCounter(this.state, offer) : isValidTrade(this.state, offer))) {
         this.draft.error = true;
         this.render();
         return;
       }
       this.draft = null;
-      this.send({ type: 'proposeTrade', player: this.me, offer: { to, give, get } });
+      this.send({
+        type: counter ? 'counterTrade' : 'proposeTrade',
+        player: this.me,
+        offer: { to, give, get },
+      });
     }
   }
 }

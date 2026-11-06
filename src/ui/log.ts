@@ -93,6 +93,8 @@ export function formatEvent(s: GameState, e: GameEvent): string {
       return l.unmortgage(name(s, e.player), tile(e.tile));
     case 'tradeProposed':
       return l.tradeProposed(name(s, e.from), name(s, e.to));
+    case 'tradeCountered':
+      return l.tradeCountered(name(s, e.from), name(s, e.to));
     case 'tradeAccepted':
       return l.tradeAccepted(name(s, e.from), name(s, e.to));
     case 'tradeRejected':

@@ -121,12 +121,13 @@ function parseAction(value: unknown): Action | null {
         : null;
     case 'pumpDump':
       return isGroup(value.group) ? { type: 'pumpDump', player, group: value.group } : null;
-    case 'proposeTrade': {
+    case 'proposeTrade':
+    case 'counterTrade': {
       if (!isRecord(value.offer) || !isCount(value.offer.to)) return null;
       const give = parseSide(value.offer.give);
       const get = parseSide(value.offer.get);
       if (!give || !get) return null;
-      return { type: 'proposeTrade', player, offer: { to: value.offer.to, give, get } };
+      return { type: value.type, player, offer: { to: value.offer.to, give, get } };
     }
     default:
       return null;

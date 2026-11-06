@@ -265,6 +265,21 @@ describe('multiplayer: partie', () => {
     expect(parseGuestMessage('nesmysl')).toBeNull();
   });
 
+  it('host si přečte protinabídku od hosta, ale ne s neplatnou stranou', () => {
+    const side = { tiles: [1], cash: 1_000, jailCards: 0 };
+    const counter = { type: 'counterTrade', player: 1, offer: { to: 0, give: side, get: side } };
+    expect(parseGuestMessage({ type: 'action', action: counter })).toEqual({
+      type: 'action',
+      action: counter,
+    });
+    expect(
+      parseGuestMessage({
+        type: 'action',
+        action: { ...counter, offer: { to: 0, give: side, get: {} } },
+      }),
+    ).toBeNull();
+  });
+
   it('po výpadku začne hrát bot, až po uplynutí lhůty', () => {
     const { network, transport } = started();
     network.remove('a');

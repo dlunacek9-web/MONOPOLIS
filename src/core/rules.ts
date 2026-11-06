@@ -3,6 +3,7 @@ import {
   GROUP_ORDER,
   HOTEL_LEVEL,
   MAX_TRADES_PER_TURN,
+  MAX_TRADE_COUNTERS,
   MIN_BID_STEP,
   MONEY_UNIT,
   MORTGAGE_INTEREST,
@@ -187,6 +188,25 @@ export function isValidTrade(s: GameState, offer: TradeOffer): boolean {
   if (!target || target.bankrupt) return false;
   if (isEmptySide(offer.give) && isEmptySide(offer.get)) return false;
   return validSide(s, offer.from, offer.give) && validSide(s, offer.to, offer.get);
+}
+
+function sameSide(a: TradeSide, b: TradeSide): boolean {
+  const sorted = (side: TradeSide) => [...side.tiles].sort((x, y) => x - y).join();
+  return a.cash === b.cash && a.jailCards === b.jailCards && sorted(a) === sorted(b);
+}
+
+/** Jde na běžící nabídku ještě odpovědět protinabídkou? */
+export function canCounterTrade(s: GameState): boolean {
+  return s.trade !== null && s.tradeCounters < MAX_TRADE_COUNTERS;
+}
+
+/** Protinabídka jde jen od toho, kdo je na řadě, proti navrhovateli a musí něco změnit. */
+export function isValidCounter(s: GameState, offer: TradeOffer): boolean {
+  const current = s.trade;
+  if (!current || !canCounterTrade(s)) return false;
+  if (offer.from !== current.to || offer.to !== current.from) return false;
+  if (!isValidTrade(s, offer)) return false;
+  return !(sameSide(offer.give, current.get) && sameSide(offer.get, current.give));
 }
 
 export function canProposeTrade(s: GameState, player: PlayerId): boolean {
