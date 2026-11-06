@@ -6,6 +6,8 @@ export const JAIL_TILE: TileId = 10;
 export const MAX_JAIL_ATTEMPTS = 3;
 export const HOTEL_LEVEL = 5;
 export const MAX_TRADES_PER_TURN = 3;
+/** Kolik protinabídek smí padnout v jednom vyjednávání, potom už jen přijmout, nebo odmítnout. */
+export const MAX_TRADE_COUNTERS = 3;
 export const MORTGAGE_INTEREST = 0.1;
 
 /**

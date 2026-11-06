@@ -171,6 +171,7 @@ export type GameEventBody =
   | { type: 'mortgage'; player: PlayerId; tile: TileId }
   | { type: 'unmortgage'; player: PlayerId; tile: TileId }
   | { type: 'tradeProposed'; from: PlayerId; to: PlayerId }
+  | { type: 'tradeCountered'; from: PlayerId; to: PlayerId }
   | { type: 'tradeAccepted'; from: PlayerId; to: PlayerId }
   | { type: 'tradeRejected'; from: PlayerId; to: PlayerId }
   | { type: 'debt'; player: PlayerId; amount: number; creditor: PlayerId | null }
@@ -232,6 +233,8 @@ export interface GameState {
   auction: Auction | null;
   pendingAuctions: TileId[];
   trade: TradeOffer | null;
+  /** Kolik protinabídek už padlo v právě běžícím vyjednávání. */
+  tradeCounters: number;
   tradesThisTurn: number;
   winner: PlayerId | null;
   /** Posledních několik událostí pro výpis ve hře. */
@@ -263,6 +266,7 @@ export type Action =
   | { type: 'mortgage'; player: PlayerId; tile: TileId }
   | { type: 'unmortgage'; player: PlayerId; tile: TileId }
   | { type: 'proposeTrade'; player: PlayerId; offer: Omit<TradeOffer, 'from'> }
+  | { type: 'counterTrade'; player: PlayerId; offer: Omit<TradeOffer, 'from'> }
   | { type: 'acceptTrade'; player: PlayerId }
   | { type: 'rejectTrade'; player: PlayerId }
   | { type: 'settleDebt'; player: PlayerId }

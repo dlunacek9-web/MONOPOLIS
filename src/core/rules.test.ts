@@ -508,6 +508,71 @@ describe('obchody', () => {
     s = reduce(s, { type: 'acceptTrade', player: 1 });
     expect(s.players[1]!.cash).toBe(START_CASH - 21_000);
   });
+
+  describe('protinabídka', () => {
+    function offered(): GameState {
+      const s = game();
+      give(s, 1, 3);
+      return reduce(s, {
+        type: 'proposeTrade',
+        player: 0,
+        offer: { to: 1, give: { ...none, cash: 1_000 }, get: { ...none, tiles: [3] } },
+      });
+    }
+    const counter = (player: PlayerId, to: PlayerId, cash: number): Action => {
+      const tiles = player === 1 ? { give: [3], get: [] } : { give: [], get: [3] };
+      return {
+        type: 'counterTrade',
+        player,
+        offer: {
+          to,
+          give: { ...none, tiles: tiles.give, cash: player === 0 ? cash : 0 },
+          get: { ...none, tiles: tiles.get, cash: player === 1 ? cash : 0 },
+        },
+      };
+    };
+
+    it('předá rozhodnutí navrhovateli, který ji může přijmout', () => {
+      let s = reduce(offered(), counter(1, 0, 5_000));
+      expect(actorOf(s)).toBe(0);
+      expect(s.trade?.from).toBe(1);
+      expect(s.tradeCounters).toBe(1);
+      expect(s.tradesThisTurn).toBe(1);
+      s = reduce(s, { type: 'acceptTrade', player: 0 });
+      expect(deedOf(s, 3).owner).toBe(0);
+      expect(s.players[0]!.cash).toBe(START_CASH - 5_000);
+      expect(s.players[1]!.cash).toBe(START_CASH + 5_000);
+      expect(s.trade).toBeNull();
+    });
+    it('smí ji poslat jen ten, kdo je na řadě, a musí něco změnit', () => {
+      const s = offered();
+      expect(() => reduce(s, counter(0, 1, 5_000))).toThrow(IllegalActionError);
+      expect(() => reduce(s, counter(1, 0, 1_000))).toThrow(IllegalActionError);
+      expect(() => reduce(s, counter(1, 0, START_CASH + 1))).toThrow(IllegalActionError);
+    });
+    it('po třech protinabídkách už jde jen přijmout, nebo odmítnout', () => {
+      let s = offered();
+      s = reduce(s, counter(1, 0, 5_000));
+      s = reduce(s, counter(0, 1, 2_000));
+      s = reduce(s, counter(1, 0, 4_000));
+      expect(s.tradeCounters).toBe(3);
+      expect(() => reduce(s, counter(0, 1, 3_000))).toThrow(IllegalActionError);
+      s = reduce(s, { type: 'rejectTrade', player: 0 });
+      expect(s.trade).toBeNull();
+      expect(actorOf(s)).toBe(0);
+    });
+    it('nová nabídka začíná počítat protinabídky znovu', () => {
+      let s = reduce(offered(), counter(1, 0, 5_000));
+      s = reduce(s, { type: 'rejectTrade', player: 0 });
+      s = reduce(s, {
+        type: 'proposeTrade',
+        player: 0,
+        offer: { to: 1, give: { ...none, cash: 2_000 }, get: { ...none, tiles: [3] } },
+      });
+      expect(s.tradeCounters).toBe(0);
+      expect(s.tradesThisTurn).toBe(2);
+    });
+  });
 });
 
 describe('výhra', () => {

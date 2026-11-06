@@ -50,6 +50,7 @@ import {
   canSellBuilding,
   canUnmortgage,
   deedOf,
+  isValidCounter,
   isValidTrade,
   minBid,
   mortgageInterest,
@@ -144,6 +145,7 @@ export function createGame(
     auction: null,
     pendingAuctions: [],
     trade: null,
+    tradeCounters: 0,
     tradesThisTurn: 0,
     winner: null,
     events: [],
@@ -903,8 +905,18 @@ function apply(s: GameState, action: Action): void {
       const offer = { ...action.offer, from: player };
       if (!isValidTrade(s, offer)) illegal('Neplatná nabídka');
       s.trade = offer;
+      s.tradeCounters = 0;
       s.tradesThisTurn += 1;
       emit(s, { type: 'tradeProposed', from: player, to: offer.to });
+      break;
+    }
+    case 'counterTrade': {
+      requireActor(s, player);
+      const offer = { ...action.offer, from: player };
+      if (!isValidCounter(s, offer)) illegal('Neplatná protinabídka');
+      s.trade = offer;
+      s.tradeCounters += 1;
+      emit(s, { type: 'tradeCountered', from: player, to: offer.to });
       break;
     }
     case 'acceptTrade': {

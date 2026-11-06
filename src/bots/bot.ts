@@ -15,6 +15,7 @@ import {
   canBuyShares,
   canLaunder,
   canMortgage,
+  canCounterTrade,
   canProposeTrade,
   canPumpDump,
   canSellBuilding,
@@ -26,6 +27,7 @@ import {
   hasBuildingsInGroup,
   hashToUnit,
   holdingOf,
+  isValidCounter,
   isValidTrade,
   launderFine,
   launderLimit,
@@ -152,7 +154,8 @@ function dangerPremium(s: GameState, player: PlayerId): number {
   return Math.max(1.2, (2.2 - 0.04 * s.round) * botOf(s, player).skill.danger);
 }
 
-export function acceptsTrade(s: GameState, me: PlayerId, offer: TradeOffer): boolean {
+/** Co hráč v nabídce získá, a kolik by musel dostat, aby se mu vyplatila. */
+function tradeBalance(s: GameState, me: PlayerId, offer: TradeOffer) {
   const other = offer.from === me ? offer.to : offer.from;
   const received = offer.from === me ? offer.get : offer.give;
   const given = offer.from === me ? offer.give : offer.get;
@@ -163,7 +166,45 @@ export function acceptsTrade(s: GameState, me: PlayerId, offer: TradeOffer): boo
     const value = tileValue(s, me, tile);
     loss += wouldComplete(s, other, tile) ? value * dangerPremium(s, me) : value;
   }
-  return gain >= loss * botOf(s, me).traits.acceptMargin;
+  return { gain, loss, wanted: loss * botOf(s, me).traits.acceptMargin };
+}
+
+export function acceptsTrade(s: GameState, me: PlayerId, offer: TradeOffer): boolean {
+  const { gain, wanted } = tradeBalance(s, me, offer);
+  return gain >= wanted;
+}
+
+/** Pod tenhle podíl toho, co bot chce, je nabídka urážka a nestojí za vyjednávání. */
+const INSULT_SHARE = 0.5;
+/** Přirážka nad cenu bota v každém kole vyjednávání, jako podíl z toho, o co by přišel. */
+const HAGGLE_PREMIUM = [0.15, 0.06, 0];
+
+/**
+ * Protinabídka bota, `null`, když nechce vyjednávat. Pozemky a propustky nechává, jak jsou, a chce
+ * doplatek. Začne s přirážkou a v dalších kolech slevuje až na svou cenu. Vychází z veřejného stavu.
+ */
+export function chooseCounter(s: GameState, me: PlayerId): Action | null {
+  const offer = s.trade;
+  if (!offer || !canCounterTrade(s)) return null;
+  const { gain, loss, wanted } = tradeBalance(s, me, offer);
+  if (gain < wanted * INSULT_SHARE) return null;
+  const premium = HAGGLE_PREMIUM[s.tradeCounters] ?? 0;
+  const mood = 0.5 + 0.5 * hashToUnit(s.rng, s.turn, me, s.tradeCounters);
+  const ask = Math.ceil((wanted - gain + loss * premium * mood) / MONEY_UNIT) * MONEY_UNIT;
+  const owedToMe = offer.give.cash - offer.get.cash + ask;
+  const counter: TradeOffer = {
+    from: me,
+    to: offer.from,
+    give: { ...offer.get, cash: Math.max(0, -owedToMe) },
+    get: { ...offer.give, cash: Math.min(Math.max(0, owedToMe), playerOf(s, offer.from).cash) },
+  };
+  // Na doplatek nemusí protistrana mít. Oříznutá protinabídka už by se botovi nevyplatila.
+  if (!isValidCounter(s, counter) || !acceptsTrade(s, me, counter)) return null;
+  return {
+    type: 'counterTrade',
+    player: me,
+    offer: { to: counter.to, give: counter.give, get: counter.get },
+  };
 }
 
 function raiseCash(s: GameState, me: PlayerId, amount: number): Action {
@@ -500,9 +541,8 @@ function chooseBuy(s: GameState, me: PlayerId): Action {
 export function chooseBotAction(s: GameState, me: PlayerId): Action {
   if (actorOf(s) !== me) throw new Error('Bot není na řadě');
   if (s.trade) {
-    return acceptsTrade(s, me, s.trade)
-      ? { type: 'acceptTrade', player: me }
-      : { type: 'rejectTrade', player: me };
+    if (acceptsTrade(s, me, s.trade)) return { type: 'acceptTrade', player: me };
+    return chooseCounter(s, me) ?? { type: 'rejectTrade', player: me };
   }
   const debt = s.debts[0];
   if (debt) {

@@ -116,6 +116,7 @@ Hotel stojí jako pátý dům a vrací do banky 4 domy.
 - Dubly: hraješ znovu, třetí dubl za sebou znamená vězení.
 - Vězení: kauce 50 000 Kč, karta „Propustka“, nebo pokus o dubl. Dubl tě pustí a posune, ale další hod nedává. Po třetím neúspěchu zaplatíš kauci a jedeš podle hodu.
 - Obchody: strukturovaná nabídka (pozemky, hotovost, propustky) na tahu. Pozemek nelze vyměnit, když v jeho městě stojí budova. Nový majitel zastaveného pozemku platí 10 % zástavy hned. Nejvýše 3 nabídky za tah.
+- Protinabídky: kdo dostal nabídku, ji může přijmout, odmítnout, nebo poslat protinabídku s jinými podmínkami, ať už v pozemcích, hotovosti, nebo propustkách. Rozhodnutí se vrací navrhovateli, který má stejné tři možnosti. V jednom vyjednávání padnou nejvýše 3 protinabídky, potom jde už jen přijmout, nebo odmítnout. Celé vyjednávání se počítá jako jedna nabídka z limitu na tah. Platí v obou režimech.
 - Dluh: nemáš-li hotovost, prodáváš budovy, zastavuješ a obchoduješ, dokud nezaplatíš, nebo zbankrotuješ.
 - Bankrot vůči hráči: věřitel dostane hotovost včetně poloviny ceny budov, pozemky i propustky a platí 10 % ze zástav. Bankrot vůči bance: pozemky se bez zástav vydraží, propustky se vrátí do balíčků.
 
@@ -138,7 +139,7 @@ Dva balíčky po 16 kartách. Texty jsou v `src/i18n/cs.ts`, efekty v `src/core/
 | Kriminálník | Jede na krev bez rezervy, v režimu MONOPOLIS bude hlavně riskovat |
 | Vyvážený    | Rozumný průměr                                                    |
 
-Obtížnost ovlivňuje ocenění celých měst, ochotu nabízet obchody a opatrnost při dávání soupeři celého města. Bot se rozhoduje jen z veřejného stavu a jeho rozhodnutí jsou deterministická vzhledem ke stavu. S přibývajícími koly boti snižují přirážku za prodej pozemku soupeři, aby se partie nezasekla.
+Obtížnost ovlivňuje ocenění celých měst, ochotu nabízet obchody a opatrnost při dávání soupeři celého města. Bot se rozhoduje jen z veřejného stavu a jeho rozhodnutí jsou deterministická vzhledem ke stavu. Na slabou nabídku odpoví protinabídkou s doplatkem: nejdřív s přirážkou, v dalších kolech slevuje až na svou cenu. Pozemky ve vyjednávání nemění. Nabídku pod polovinou své ceny odmítne a protinabídku nepošle ani tehdy, když na doplatek protistrana nemá. S přibývajícími koly boti snižují přirážku za prodej pozemku soupeři, aby se partie nezasekla.
 
 ## 6. Archetypy
 

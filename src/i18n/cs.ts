@@ -390,6 +390,13 @@ export const cs = {
     tradeAccept: 'Přijmout',
     tradeReject: 'Odmítnout',
     tradeWaiting: (name: string) => `${name} si nabídku rozmýšlí…`,
+    tradeCounter: 'Protinabídka',
+    tradeCounterTitle: 'Protinabídka',
+    tradeCounterSend: 'Poslat protinabídku',
+    tradeCounterIncoming: (name: string) => `${name} ti dává protinabídku`,
+    tradeCounterInvalid:
+      'Tahle protinabídka nejde. Musí se lišit od původní nabídky a obě strany na ni musí mít.',
+    tradeLastWord: 'Poslední slovo: teď už jen přijmout, nebo odmítnout.',
     jailCardsCount: (count: number) => `Propustky: ${count}`,
     inJail: 've vazbě',
     isBankrupt: 'bankrot',
@@ -563,6 +570,7 @@ export const cs = {
     mortgage: (name: string, tile: string) => `${name} zastavil ${tile}.`,
     unmortgage: (name: string, tile: string) => `${name} splatil hypotéku: ${tile}.`,
     tradeProposed: (from: string, to: string) => `${from} nabízí obchod hráči ${to}.`,
+    tradeCountered: (from: string, to: string) => `${from} dává protinabídku hráči ${to}.`,
     tradeAccepted: (from: string, to: string) => `${to} přijal obchod od hráče ${from}.`,
     tradeRejected: (from: string, to: string) => `${to} odmítl obchod od hráče ${from}.`,
     debt: (name: string, amount: string, creditor: string) =>

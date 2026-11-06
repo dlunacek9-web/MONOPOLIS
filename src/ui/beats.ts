@@ -253,6 +253,9 @@ export function beatsFor(s: GameState, events: readonly GameEvent[], me: PlayerI
             : banner('neutral'),
         );
         break;
+      case 'tradeCountered':
+        beats.push(banner('neutral'));
+        break;
       case 'tradeAccepted':
         beats.push(banner('good'));
         break;

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { actorOf, createGame, deedOf, reduce } from '../core';
 import type { Difficulty, GameState, Personality, PlayerSetup, WinCondition } from '../core';
 import { LocalTransport } from '../net/local';
-import { acceptsTrade, chooseBotAction } from './bot';
+import { acceptsTrade, chooseBotAction, tileValue } from './bot';
 
 /** Hlídá, že se boti nedostanou do patu, kdy peníze jen rostou a nikdo nekrachuje. */
 const MAX_ROUNDS = 1000;
@@ -157,6 +157,51 @@ describe('rozhodnutí botů', () => {
     expect(acceptsTrade(s, 1, cheap)).toBe(false);
     const rich = { ...cheap, give: { ...none, cash: 600_000 } };
     expect(acceptsTrade(s, 1, rich)).toBe(true);
+  });
+  describe('protinabídky', () => {
+    /** Hráč 0 nabízí hotovost za volný pozemek hráče 1. */
+    function haggling(cash: number): GameState {
+      const s = duel();
+      deedOf(s, 39).owner = 1;
+      s.trade = { from: 0, to: 1, give: { ...none, cash }, get: { ...none, tiles: [39] } };
+      return s;
+    }
+    const worth = () => tileValue(duel(), 1, 39);
+
+    it('slabá nabídka dostane protinabídku, která se botovi vyplatí', () => {
+      const s = haggling(Math.floor(worth() * 0.8));
+      const action = chooseBotAction(s, 1);
+      if (action.type !== 'counterTrade') throw new Error(action.type);
+      const counter = { from: 1, ...action.offer };
+      expect(counter.to).toBe(0);
+      expect(counter.give.tiles).toEqual([39]);
+      expect(counter.get.cash).toBeGreaterThan(s.trade!.give.cash);
+      expect(acceptsTrade(s, 1, counter)).toBe(true);
+      expect(() => reduce(s, action)).not.toThrow();
+    });
+    it('urážlivou nabídku odmítne', () => {
+      expect(chooseBotAction(haggling(1_000), 1).type).toBe('rejectTrade');
+    });
+    it('po vyčerpaných protinabídkách už jen odmítne', () => {
+      const s = haggling(Math.floor(worth() * 0.8));
+      s.tradeCounters = 3;
+      expect(chooseBotAction(s, 1).type).toBe('rejectTrade');
+    });
+    it('s vyjednáváním slevuje na přirážce', () => {
+      const asked = (round: number) => {
+        const s = haggling(Math.floor(worth() * 0.8));
+        s.tradeCounters = round;
+        const action = chooseBotAction(s, 1);
+        if (action.type !== 'counterTrade') throw new Error(action.type);
+        return action.offer.get.cash;
+      };
+      expect(asked(0)).toBeGreaterThan(asked(2));
+    });
+    it('když protistrana nemá na doplatek, protinabídku neposílá', () => {
+      const s = haggling(Math.floor(worth() * 0.8));
+      s.players[0]!.cash = s.trade!.give.cash;
+      expect(chooseBotAction(s, 1).type).toBe('rejectTrade');
+    });
   });
   it('s dluhem zastavuje a bez možností krachuje', () => {
     const s = duel();
