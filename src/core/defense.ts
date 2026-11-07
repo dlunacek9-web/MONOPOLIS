@@ -362,7 +362,13 @@ export function runWave(d: ActiveDefense): WaveResult {
 }
 
 /** Kolik políček cesty pokryje věž daného druhu na poli. Slouží botům i nápovědě. */
+const coverage = new Map<string, number>();
+
 export function pathCoverage(cell: number, kind: TowerKind): number {
+  // Mapa je pevná, takže se každé pole spočítá jen jednou. Boti se ptají pořád dokola.
+  const key = `${kind}${cell}`;
+  const cached = coverage.get(key);
+  if (cached !== undefined) return cached;
   const [x, y] = cellXY(cell);
   const range = TOWERS[kind].range[0]!;
   let count = 0;
@@ -372,5 +378,6 @@ export function pathCoverage(cell: number, kind: TowerKind): number {
     const dy = (py - y) * UNIT;
     if (dx * dx + dy * dy <= range * range) count += 1;
   }
+  coverage.set(key, count);
   return count;
 }
