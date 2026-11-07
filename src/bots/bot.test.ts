@@ -124,7 +124,8 @@ describe('celé partie botů', () => {
           expect(state.winner).not.toBeNull();
           expect(state.players.filter((p) => !p.bankrupt)).toHaveLength(1);
         }
-      });
+        // 25 celých partií je na pomalém stroji CI kolem pěti sekund.
+      }, 20_000);
     }
   }
   it('ostatní podmínky výhry také končí', () => {
