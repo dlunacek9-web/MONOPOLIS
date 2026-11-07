@@ -34,7 +34,7 @@ export function playerOf(s: GameState, id: PlayerId) {
  * V živé dražbě není na řadě nikdo, přihazovat smí všichni najednou.
  */
 export function actorOf(s: GameState): PlayerId | null {
-  if (s.phase === 'gameOver') return null;
+  if (s.phase === 'gameOver' || s.phase === 'defense') return null;
   if (s.trade) return s.trade.to;
   const debt = s.debts[0];
   if (debt) return debt.player;
@@ -46,7 +46,7 @@ export function actorOf(s: GameState): PlayerId | null {
 export function canManage(s: GameState, player: PlayerId): boolean {
   if (s.trade || s.auction) return false;
   if (s.phase === 'gameOver' || s.phase === 'chase' || s.phase === 'breakout') return false;
-  if (s.phase === 'heist') return false;
+  if (s.phase === 'heist' || s.phase === 'defense') return false;
   return actorOf(s) === player && !playerOf(s, player).bankrupt;
 }
 

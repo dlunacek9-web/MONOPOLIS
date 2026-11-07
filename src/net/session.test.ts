@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { actorOf, createGame, reduce } from '../core';
 import type { GameState } from '../core';
 import { chooseBotAction } from '../bots/bot';
+import { chooseDefenseAction } from '../bots/defense';
 import { CONNECT_TIMEOUT_MS, GuestSession } from './guest';
 import { HOST_SEAT, HostSession, RECONNECT_GRACE_MS } from './host';
 import { DEFAULT_MATCH, matchSettings, matchSetups } from './match';
@@ -381,13 +382,22 @@ describe('multiplayer: partie', () => {
     const network = new FakeNetwork();
     const host = setupHost(network, 3);
     const anna = joinGuest(network, 'a', 'Anna');
-    host.setOptions({ ...DEFAULT_MATCH, seats: 3, win: 'rounds', rounds: 8 });
+    host.setOptions({ ...DEFAULT_MATCH, seats: 3, win: 'rounds', rounds: 9 });
     const transport = host.startGame(11);
     for (let i = 0; i < 20_000 && transport.getState().phase !== 'gameOver'; i++) {
       const state = transport.getState();
       // V živé dražbě nikdo nepřihazuje a rozhodne kladívko hostitele.
       if (state.auction?.live) {
         transport.dispatch({ type: 'auctionGavel', player: state.auction.bidders[0]! });
+        continue;
+      }
+      // Válka gangů: každý staví za sebe, Anna přes síť.
+      if (state.defense) {
+        const d = state.defense;
+        const builder = d.defenders.find((id) => !d.ready.includes(id))!;
+        const move = chooseDefenseAction(state, builder);
+        if (builder === 1) anna.dispatch(move);
+        else transport.dispatch(move);
         continue;
       }
       const actor = actorState(state);
@@ -489,6 +499,14 @@ describe('zprávy honičky', () => {
       action: { type: 'heistResult', player: 1, escaped: true, bags: 2 },
     });
     expect(parse({ type: 'heistResult', player: 1, escaped: true, bags: -1 })).toBeNull();
+    expect(parse({ type: 'defenseBuild', player: 1, cell: 21, kind: 'sniper' })).toEqual({
+      type: 'action',
+      action: { type: 'defenseBuild', player: 1, cell: 21, kind: 'sniper' },
+    });
+    expect(parse({ type: 'defenseBuild', player: 1, cell: 21, kind: 'tank' })).toBeNull();
+    expect(parse({ type: 'defenseUpgrade', player: 1, cell: -3 })).toBeNull();
+    // Čas na stavbu hlídá jen hostitel.
+    expect(parse({ type: 'defenseTimeout', player: 1 })).toBeNull();
   });
 
   describe('odklikávání scén', () => {

@@ -134,8 +134,7 @@ function run({ host, input, signal }: MinigameContext<AuctionInput>): Promise<Au
     let lastFrame = performance.now();
     const bubbles = new Map<PlayerId, ReturnType<typeof setTimeout>>();
 
-    const live = (s: GameState) =>
-      s.auction?.live && s.auction.tile === tile ? s.auction : null;
+    const live = (s: GameState) => (s.auction?.live && s.auction.tile === tile ? s.auction : null);
 
     const finish = (result: AuctionResult) => {
       if (finished) return;

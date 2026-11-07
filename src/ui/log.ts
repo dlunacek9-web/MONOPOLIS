@@ -51,6 +51,14 @@ export function formatEvent(s: GameState, e: GameEvent): string {
       return e.loot > 0
         ? cs.heist.logEscaped(name(s, e.player), formatMoney(e.loot))
         : cs.heist.logEmpty(name(s, e.player));
+    case 'defenseStart':
+      return cs.defense.logStart(e.round);
+    case 'defenseWave':
+      return cs.defense.logWave(e.wave, e.leaked, e.lives);
+    case 'defenseEnd':
+      return e.held
+        ? cs.defense.logHeld(formatMoney(e.amount))
+        : cs.defense.logFell(formatMoney(e.amount));
     case 'breakoutStart':
       return cs.breakout.logStart(name(s, e.player));
     case 'breakoutEnd':

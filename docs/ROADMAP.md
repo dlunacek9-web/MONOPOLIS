@@ -70,7 +70,7 @@ Pořadí fází: 2 → 3 → 4 → 5 a dál. Multiplayer jde před byznysovou vr
 ## Fáze 7 — Heisty a tower defense hotelu
 
 - [x] Heist na hotel a banku
-- [ ] Tower defense hotelu
+- [x] Válka gangů: kooperativní tower defense celého stolu (původně tower defense hotelu)
 
 ## Fáze 8 — Polish
 

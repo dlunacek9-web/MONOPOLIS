@@ -388,6 +388,23 @@ export function beatsFor(s: GameState, events: readonly GameEvent[], me: PlayerI
             : scene('police', 'cop', [pick(cs.scene.heist[e.target], e.seq)], null, 'siren'),
         );
         break;
+      case 'defenseStart':
+        beats.push(scene('police', 'cop', [pick(cs.scene.defenseStart, e.seq)], null, 'siren'));
+        break;
+      case 'defenseWave':
+        beats.push(toast());
+        break;
+      case 'defenseEnd':
+        beats.push(
+          scene(
+            'police',
+            'cop',
+            [e.held ? cs.scene.defenseHeld : cs.scene.defenseFell],
+            { text: e.held ? cs.stamp.held : cs.stamp.fell, good: e.held },
+            'siren',
+          ),
+        );
+        break;
       case 'heistEnd':
         beats.push(
           e.player === me

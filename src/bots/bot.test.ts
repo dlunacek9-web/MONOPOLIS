@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { actorOf, createGame, deedOf, reduce } from '../core';
 import type { Difficulty, GameState, Personality, PlayerSetup, WinCondition } from '../core';
 import { LocalTransport } from '../net/local';
+import type { Action } from '../core';
 import { acceptsTrade, chooseBotAction, tileValue } from './bot';
+import { chooseDefenseAction } from './defense';
 
 /** Hlídá, že se boti nedostanou do patu, kdy peníze jen rostou a nikdo nekrachuje. */
 const MAX_ROUNDS = 1000;
@@ -15,11 +17,21 @@ function setups(count: number, seed: number, difficulty: Difficulty): PlayerSetu
   }));
 }
 
+/** Další tah botů. Ve Válce gangů staví ten, kdo ještě nedostavěl. */
+function botStep(s: GameState): Action {
+  const d = s.defense;
+  if (!d) return chooseBotAction(s, actorOf(s)!);
+  return chooseDefenseAction(
+    s,
+    d.defenders.find((id) => !d.ready.includes(id))!,
+  );
+}
+
 function playOut(state: GameState, maxActions = 60_000): { state: GameState; actions: number } {
   let s = state;
   let actions = 0;
   while (s.phase !== 'gameOver' && actions < maxActions) {
-    s = reduce(s, chooseBotAction(s, actorOf(s)!));
+    s = reduce(s, botStep(s));
     actions += 1;
     const cashOk = s.players.every((p) => p.cash >= 0 && p.dirty >= 0);
     if (!cashOk) throw new Error('Záporná hotovost');
@@ -42,7 +54,7 @@ describe('byznysová vrstva u botů', () => {
         seed * 31,
       );
       for (let i = 0; i < 60_000 && s.phase !== 'gameOver'; i++) {
-        const action = chooseBotAction(s, actorOf(s)!);
+        const action = botStep(s);
         seen.add(action.type);
         s = reduce(s, action);
       }

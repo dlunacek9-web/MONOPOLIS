@@ -94,6 +94,31 @@ export interface ActiveHeist {
   resume: 'awaitRoll' | 'awaitEnd';
 }
 
+export type TowerKind = 'bouncer' | 'sniper' | 'clerk';
+
+/** Věž obránce. `level` je 1–3. */
+export interface DefenseTower {
+  cell: number;
+  kind: TowerKind;
+  level: number;
+  owner: PlayerId;
+}
+
+/**
+ * Běžící Válka gangů. `defenders` jsou hráči v pořadí dílů mapy, `budgets` jde podle dílů.
+ * `wave` je číslo vlny, na kterou se právě staví.
+ */
+export interface ActiveDefense {
+  wave: number;
+  lives: number;
+  defenders: PlayerId[];
+  budgets: number[];
+  towers: DefenseTower[];
+  ready: PlayerId[];
+  /** Výsledek poslední odehrané vlny. */
+  last: { wave: number; leaked: number; kills: number; ticks: number } | null;
+}
+
 /** Vlastnictví pozemku. `level` je 0–4 domů, 5 znamená hotel. */
 export interface Deed {
   owner: PlayerId | null;
@@ -145,6 +170,7 @@ export type Phase =
   | 'chase'
   | 'breakout'
   | 'heist'
+  | 'defense'
   | 'awaitEnd'
   | 'gameOver';
 export type BribeKind = 'official' | 'police' | 'build';
@@ -217,6 +243,9 @@ export type GameEventBody =
       bags: number;
       loot: number;
     }
+  | { type: 'defenseStart'; round: number; defenders: PlayerId[] }
+  | { type: 'defenseWave'; wave: number; leaked: number; kills: number; lives: number }
+  | { type: 'defenseEnd'; held: boolean; lives: number; amount: number }
   | { type: 'controller'; player: PlayerId; previous: string; bot: boolean };
 
 export type GameEvent = GameEventBody & { seq: number };
@@ -272,6 +301,8 @@ export interface GameState {
   pendingRent: PendingRent | null;
   /** Heist, který se právě hraje. */
   heist: ActiveHeist | null;
+  /** Válka gangů, která se právě hraje. */
+  defense: ActiveDefense | null;
 }
 
 export type Action =
@@ -322,6 +353,13 @@ export type Action =
   | { type: 'heistResult'; player: PlayerId; escaped: boolean; bags: number }
   /** Heist bez hraní: rozhodne seedovaný generátor. */
   | { type: 'heistSkip'; player: PlayerId }
+  /** Válka gangů: postavení věže ve vlastním dílu mapy. */
+  | { type: 'defenseBuild'; player: PlayerId; cell: number; kind: TowerKind }
+  | { type: 'defenseUpgrade'; player: PlayerId; cell: number }
+  /** Obránce dostavěl, vlna se pustí, až budou hotoví všichni. */
+  | { type: 'defenseReady'; player: PlayerId }
+  /** Vypršel čas na stavbu. Posílá jen časovač hostitele, `player` je první obránce. */
+  | { type: 'defenseTimeout'; player: PlayerId }
   /** Místo u stolu přebírá člověk nebo bot. Posílá jen hostitel, nikdy hráč po síti. */
   | { type: 'setController'; player: PlayerId; name: string; bot: BotConfig | null };
 
@@ -407,6 +445,8 @@ export interface BusinessRules {
     fine: number;
   };
   heist: { cooldownRounds: number } & Record<HeistTarget, HeistRules>;
+  /** Válka gangů: každých kolik kol přijde a kolik dostane nebo zaplatí každý obránce. */
+  defense: { everyRounds: number; reward: number; penalty: number };
   perks: Record<Archetype, Partial<ArchetypePerks>>;
 }
 
