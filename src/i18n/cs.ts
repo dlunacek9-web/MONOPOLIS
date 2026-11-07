@@ -8,6 +8,7 @@ import type {
   GameMode,
   GroupId,
   Personality,
+  TowerKind,
 } from '../core';
 
 export function formatMoney(amount: number): string {
@@ -370,6 +371,54 @@ export const cs = {
     weight: (pct: number) => `rychlost ${pct} %`,
     cleanLeft: 'Střídání ostrahy',
   },
+  defense: {
+    logStart: (round: number) => `Kolo ${round}: Válka gangů! Celé město se brání spolu.`,
+    logWave: (wave: number, leaked: number, lives: number) =>
+      leaked === 0
+        ? `Vlna ${wave} odražena bez ztrát. Městu zbývá ${lives} životů.`
+        : `Vlna ${wave}: k radnici prošlo ${leaked}. Městu zbývá ${lives} životů.`,
+    logHeld: (amount: string) => `Město ubráněno! Každý obránce dostává ${amount}.`,
+    logFell: (amount: string) => `Město padlo. Každý obránce platí ${amount} na opravy.`,
+    title: 'Válka gangů',
+    introBubble:
+      'Gangy táhnou na radnici. Každý brání svůj kus města. Když padne radnice, platíme všichni.',
+    wave: (wave: number, total: number) => `Vlna ${wave} z ${total}`,
+    lives: 'Životy města',
+    budget: 'Rozpočet',
+    yourSector: 'Tvůj díl je zvýrazněný. Stav jen v něm.',
+    towers: {
+      bouncer: 'Vyhazovač',
+      sniper: 'Odstřelovač',
+      clerk: 'Úředník',
+    } satisfies Record<TowerKind, string>,
+    towerTips: {
+      bouncer: 'Levný a rychlý, ale vidí jen kousek.',
+      sniper: 'Dostřelí daleko a bolí to. Pomalu nabíjí.',
+      clerk: 'Zdrží každého v dosahu papírováním.',
+    } satisfies Record<TowerKind, string>,
+    level: (level: number) => `úroveň ${level}`,
+    upgrade: (cost: number) => `Vylepšit za ${cost}`,
+    maxed: 'Na maximu',
+    start: 'Na barikády!',
+    ready: 'Pustit vlnu',
+    waiting: 'Čekáme na ostatní…',
+    auto: 'Postav za mě',
+    timeLeft: (seconds: number) => `Na stavbu zbývá ${seconds} s`,
+    playing: 'Gang útočí!',
+    readyMark: 'hotovo',
+    buildingMark: 'staví',
+    hint: 'Klikni do svého dílu a postav vybranou věž. Klik na svou věž ji vylepší.',
+    keys: '1, 2, 3 výběr věže · Mezerník pustit vlnu',
+    waveResult: (leaked: number) =>
+      leaked === 0 ? 'Nikdo neprošel!' : `Prošlo ${leaked}, radnice dostala zásah.`,
+    held: 'MĚSTO UBRÁNĚNO',
+    fell: 'MĚSTO PADLO',
+    heldText: (lives: number, amount: string) =>
+      `Radnice vydržela s ${lives} životy. Každý obránce dostává ${amount}.`,
+    fellText: (amount: string) => `Gangy vyrabovaly radnici. Každý obránce platí ${amount}.`,
+    resume: 'Zpátky do města',
+    running: 'Celé město se brání…',
+  },
   auctionLive: {
     topBid: 'Nejvyšší příhoz',
     noBid: 'Zatím nikdo',
@@ -533,6 +582,12 @@ export const cs = {
       bank: ['Přepadení banky! Všechny hlídky do centra!', 'Trezor je otevřený! Uzavřete ulici!'],
       hotel: ['Hotel hlásí zloděje v trezoru!', 'Někdo vybírá recepci. Bez rezervace!'],
     } satisfies Record<HeistTarget, string[]>,
+    defenseStart: [
+      'Gangy táhnou na radnici! Všichni na barikády!',
+      'Válka gangů! Každý brání svůj kus města!',
+    ],
+    defenseHeld: 'Gangy se stáhly. Radnice stojí.',
+    defenseFell: 'Radnice je vyrabovaná. Účet za opravy jde všem.',
     heistEscaped: 'Dodávka zmizela. Prý v ní bylo prádlo.',
     heistCaught: 'Máme ho. Pytle si nechal ukázat do protokolu.',
   },
@@ -549,6 +604,8 @@ export const cs = {
     escaped: 'UJEL',
     arrested: 'CHYCEN',
     looted: 'VYBRÁNO',
+    held: 'UBRÁNĚNO',
+    fell: 'PADLO',
   },
   tile: {
     price: 'Cena',

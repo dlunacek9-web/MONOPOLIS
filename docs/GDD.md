@@ -190,13 +190,13 @@ Každá minihra je plugin s `start(context) → Promise<result>`, AI a lidským 
 
 Délka podle důležitosti: běžné situace (honička, útěk z vězení) jsou krátké arkády na 30–60 sekund, velké heisty jsou delší mise o více fázích. Obojí se dá přeskočit přes `autoResolve()`. Minihry běží ve 3D ve stejném stylu jako město (viz kapitola 10).
 
-| Minihra              | Spouštěč                  | Výsledek                                        | Auto-resolve (návrh)   |
-| -------------------- | ------------------------- | ----------------------------------------------- | ---------------------- |
-| Honička autem        | Cizí pozemek, místo nájmu | Ujedeš: neplatíš. Chytí tě: dvojnásobek a vazba | Šance na útěk 45 %     |
-| Útěk z vězení        | Ve vazbě, místo hodu      | Ven zdarma, nebo pokuta a tah ve vězení         | Šance 40 %             |
-| Živá dražba          | Odmítnutá koupě, bankrot  | Pozemek za nejvyšší příhoz                      | Tahová dražba          |
-| Heist                | Zadní místnost            | Lup v černých, nebo riziko pokuty a vazby       | Hotel 50 %, banka 35 % |
-| Tower defense hotelu | Heist na hotel            | Obrana, nebo ztráta peněz                       | 50 % ± rozdíl úrovní   |
+| Minihra       | Spouštěč                  | Výsledek                                        | Auto-resolve (návrh)   |
+| ------------- | ------------------------- | ----------------------------------------------- | ---------------------- |
+| Honička autem | Cizí pozemek, místo nájmu | Ujedeš: neplatíš. Chytí tě: dvojnásobek a vazba | Šance na útěk 45 %     |
+| Útěk z vězení | Ve vazbě, místo hodu      | Ven zdarma, nebo pokuta a tah ve vězení         | Šance 40 %             |
+| Živá dražba   | Odmítnutá koupě, bankrot  | Pozemek za nejvyšší příhoz                      | Tahová dražba          |
+| Heist         | Zadní místnost            | Lup v černých, nebo riziko pokuty a vazby       | Hotel 50 %, banka 35 % |
+| Válka gangů   | Každé 8. kolo             | Všichni dostanou, nebo všichni zaplatí          | Bot staví za hráče     |
 
 ### Honička autem
 
@@ -225,7 +225,7 @@ Jen v režimu Next level. Ve vazbě může hráč místo hodu, kauce nebo úplat
 
 ### Heist
 
-Jen v režimu Next level. Spouští se ze Zadní místnosti na svém tahu, na svobodě, bez dluhu a mimo rozhodování o koupi nebo dani. Mezi heisty jednoho hráče musí uběhnout 6 kol. Banka jde vykrást vždy, hotel jen tehdy, když na desce stojí hotel soupeře. Lup jde z banky, majitel hotelu zatím o nic nepřichází, to přijde s tower defense.
+Jen v režimu Next level. Spouští se ze Zadní místnosti na svém tahu, na svobodě, bez dluhu a mimo rozhodování o koupi nebo dani. Mezi heisty jednoho hráče musí uběhnout 6 kol. Banka jde vykrást vždy, hotel jen tehdy, když na desce stojí hotel soupeře. Lup jde z banky, majitel hotelu o nic nepřichází.
 
 | Cíl   | První pytel | Další pytel | Pytlů | Zámků | Kamer | Poplach | Policistů | Odhalení při prohře | Pokuta  |
 | ----- | ----------- | ----------- | ----- | ----- | ----- | ------- | --------- | ------------------- | ------- |
@@ -252,6 +252,26 @@ Jen v režimu Next level a jen když v dražbě sedí aspoň jeden člověk. Sam
 - **Boti blafují:** někteří přihazují až o 40 % nad svou cenu a riskují, že předražený pozemek zaplatí. Někteří po přeplacení jen mlčí, takže nejde poznat, jestli skončili, nebo číhají. Číhající bot přihodí až po klepnutí kladívka a občas přihodí velkým skokem. Bluf i řeči v bublinách vycházejí jen z veřejného stavu, bot nemá žádnou výhodu.
 - **Časovač:** pravidla žádný čas neznají. Hodiny běží u hostitele a klepnutí je běžná akce, kterou hosté poslat nemohou.
 - **Vzhled:** dražební síň ve stejném low-poly jazyce, bez 3D běží jen s panely.
+
+### Válka gangů (tower defense)
+
+Jen v režimu Next level. Kooperativní minihra celého stolu, s heistem nijak nesouvisí. Přijde na začátku každého 8. kola, ještě před tahem prvního hráče. Hrají všichni hráči, kteří nezkrachovali, lidé i boti najednou.
+
+- **Mapa:** 20 × 12 políček. Gang jde od úkrytu k radnici po cestě, která vede třikrát přes celou šířku. Mapa je rozdělená na svislé pruhy, jeden na hráče (půlka, třetina, čtvrtina). Hráč staví jen ve svém pruhu, ale cesta vede přes každý.
+- **Vlny:** 3 vlny. Před každou má každý 45 s na stavbu, pak tlačítko „Pustit vlnu“. Vlna se pustí, až jsou hotoví všichni, nebo vyprší čas.
+- **Rozpočet:** každý má vlastní, 140 na začátku, +60 po každé vlně a odměna za každého sestřeleného ze své věže.
+- **Věže:** cena, upgrade stojí cenu krát dosaženou úroveň, nejvýš úroveň 3.
+
+| Věž         | Cena | Dosah (políčka) | Poškození    | Nabíjení | Zvláštnost               |
+| ----------- | ---- | --------------- | ------------ | -------- | ------------------------ |
+| Vyhazovač   | 40   | 1,6 / 1,8 / 2,0 | 4 / 7 / 11   | 0,5 s    | levný a rychlý           |
+| Odstřelovač | 70   | 3,6 / 4,2 / 4,8 | 14 / 24 / 38 | 1,8 s    | daleko a silně           |
+| Úředník     | 50   | 1,8 / 2,1 / 2,4 | 1 / 2 / 3    | 1 s      | zpomalí o 35 / 45 / 55 % |
+
+- **Gang:** grázl (30 životů), motorkář (19, rychlý), obrněná dodávka (170, bere 3 životy) a ve 3. vlně Kmotr (500, bere 5 životů). Životy gangu jsou pro dva obránce, s každým dalším obráncem rostou o polovinu, takže obtížnost odpovídá počtu hráčů.
+- **Sázka, společný osud:** město má 20 společných životů. Když vydrží všechny 3 vlny, každý obránce dostane 200 000. Když padne, každý zaplatí 200 000, kdo nemá, jde do dluhu.
+- **Boti:** staví podle toho, kolik cesty věž pokryje, lehký bot víc nazdařbůh. Člověk může nechat stavět bota („Postav za mě“).
+- **Multiplayer:** vlna se počítá v pravidlech celými čísly, takže ji každý počítač spočítá stejně. Minihra ji jen přehrává. Čas na stavbu hlídá hostitel.
 
 ## 9. Progrese
 

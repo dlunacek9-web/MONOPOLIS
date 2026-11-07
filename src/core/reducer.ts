@@ -41,6 +41,18 @@ import {
   sharePrice,
 } from './business';
 import { CARDS, cardEffect } from './cards';
+import {
+  DEFENSE_WAVES,
+  DEFENSE_WAVE_INCOME,
+  TOWERS,
+  canDefenseBuild,
+  canDefenseUpgrade,
+  createDefense,
+  runWave,
+  sectorOf,
+  towerAt,
+  upgradeCost,
+} from './defense';
 import { useRuleset } from './ruleset';
 import { randomInt, rollDice, shuffle } from './rng';
 import {
@@ -160,6 +172,7 @@ export function createGame(
     pendingTax: null,
     pendingRent: null,
     heist: null,
+    defense: null,
   };
   s.decks.tip = shuffle(
     s,
@@ -702,8 +715,67 @@ function nextTurn(s: GameState): void {
     finishGame(s, richestPlayer(s));
     return;
   }
+  if (wrapped && BUSINESS && s.round % BUSINESS.defense.everyRounds === 0) {
+    startDefense(s);
+    return;
+  }
   emit(s, { type: 'turnStart', player: next, round: s.round });
   tickPump(s, next);
+}
+
+/** Válka gangů začíná na začátku kola, ještě před tahem prvního hráče. */
+function startDefense(s: GameState): void {
+  const count = s.players.length;
+  const defenders: PlayerId[] = [];
+  for (let i = 0; i < count; i++) {
+    const p = s.players[(s.firstPlayer + i) % count]!;
+    if (!p.bankrupt) defenders.push(p.id);
+  }
+  s.defense = createDefense(defenders);
+  s.phase = 'defense';
+  emit(s, { type: 'defenseStart', round: s.round, defenders });
+}
+
+/** Obránce, který může v Válce gangů ještě něco udělat. */
+function requireDefender(s: GameState, player: PlayerId) {
+  const d = s.defense;
+  if (s.phase !== 'defense' || !d) illegal('Neběží Válka gangů');
+  if (sectorOf(d, player) < 0) illegal('Hráč nebrání město');
+  if (d.ready.includes(player)) illegal('Hráč už dostavěl');
+  return d;
+}
+
+/** Všichni dostavěli: vlna se odehraje a po poslední se rozdá odměna nebo účet. */
+function playWave(s: GameState): void {
+  const d = s.defense!;
+  const result = runWave(d);
+  d.lives = Math.max(0, d.lives - result.leaked);
+  d.budgets = d.budgets.map((b, i) => b + (result.bounties[i] ?? 0) + DEFENSE_WAVE_INCOME);
+  d.last = { wave: d.wave, leaked: result.leaked, kills: result.kills, ticks: result.ticks };
+  d.ready = [];
+  emit(s, {
+    type: 'defenseWave',
+    wave: d.wave,
+    leaked: result.leaked,
+    kills: result.kills,
+    lives: d.lives,
+  });
+  if (d.lives > 0 && d.wave < DEFENSE_WAVES) {
+    d.wave += 1;
+    return;
+  }
+  const held = d.lives > 0;
+  const { reward, penalty } = BUSINESS!.defense;
+  s.defense = null;
+  s.phase = 'awaitRoll';
+  emit(s, { type: 'defenseEnd', held, lives: d.lives, amount: held ? reward : penalty });
+  for (const id of d.defenders) {
+    if (playerOf(s, id).bankrupt) continue;
+    if (held) playerOf(s, id).cash += reward;
+    else charge(s, id, null, penalty);
+  }
+  emit(s, { type: 'turnStart', player: s.active, round: s.round });
+  tickPump(s, s.active);
 }
 
 /** Náhodný šum burzy na konci každého kola. */
@@ -1172,6 +1244,33 @@ function apply(s: GameState, action: Action): void {
       finishHeist(s, player, escaped, 1 + randomInt(s, maxBags - 1));
       break;
     }
+    case 'defenseBuild': {
+      const d = requireDefender(s, player);
+      if (!canDefenseBuild(d, player, action.cell, action.kind)) illegal('Tady stavět nejde');
+      d.budgets[sectorOf(d, player)]! -= TOWERS[action.kind].cost;
+      d.towers.push({ cell: action.cell, kind: action.kind, level: 1, owner: player });
+      break;
+    }
+    case 'defenseUpgrade': {
+      const d = requireDefender(s, player);
+      if (!canDefenseUpgrade(d, player, action.cell)) illegal('Věž nejde vylepšit');
+      const tower = towerAt(d, action.cell)!;
+      d.budgets[sectorOf(d, player)]! -= upgradeCost(tower);
+      tower.level += 1;
+      break;
+    }
+    case 'defenseReady': {
+      const d = requireDefender(s, player);
+      d.ready.push(player);
+      if (d.defenders.every((id) => d.ready.includes(id) || playerOf(s, id).bankrupt)) {
+        playWave(s);
+      }
+      break;
+    }
+    case 'defenseTimeout':
+      if (s.phase !== 'defense' || !s.defense) illegal('Neběží Válka gangů');
+      playWave(s);
+      break;
     case 'pumpDump': {
       if (!canPumpDump(s, player, action.group) || !BUSINESS) illegal('Pump & dump teď nejde');
       p.dirty -= BUSINESS.pump.cost;

@@ -143,6 +143,7 @@ export const NEXTLEVEL: Ruleset = {
     },
     chase: { autoEscapePct: 45, cooldownRounds: 3, caughtRentFactor: 2 },
     breakout: { autoEscapePct: 40, fine: 30_000 },
+    defense: { everyRounds: 8, reward: 200_000, penalty: 200_000 },
     heist: {
       cooldownRounds: 6,
       hotel: {

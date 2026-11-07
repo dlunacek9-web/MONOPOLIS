@@ -1,9 +1,9 @@
-import { BOARD, GROUP_ORDER } from '../core';
-import type { Action, GameState, GroupId, PlayerId, TileId, TradeSide } from '../core';
+import { BOARD, GROUP_ORDER, TOWER_KINDS } from '../core';
+import type { Action, GameState, GroupId, PlayerId, TileId, TowerKind, TradeSide } from '../core';
 import type { MatchOptions } from './match';
 
 /** Zvyš při každé nekompatibilní změně zpráv, ať se nepotkají různé verze hry. */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 export const MAX_NAME_LENGTH = 20;
 
 export type SeatKind = 'host' | 'guest' | 'bot';
@@ -61,10 +61,15 @@ function parseSide(value: unknown): TradeSide | null {
   return { tiles, cash, jailCards };
 }
 
+function isTowerKind(value: unknown): value is TowerKind {
+  return TOWER_KINDS.includes(value as TowerKind);
+}
+
 /**
  * Zpráva od hosta může být cokoli, proto se skládá znovu jen z ověřených polí.
  * `setController` tu záměrně chybí: o místech u stolu rozhoduje jen hostitel.
  * `auctionGavel` taky: kladívko je časovač hostitele, jinak by si dražbu ukončil kdokoli.
+ * Stejně tak `defenseTimeout`: čas na stavbu ve Válce gangů hlídá jen hostitel.
  */
 function parseAction(value: unknown): Action | null {
   if (!isRecord(value) || !isCount(value.player)) return null;
@@ -90,7 +95,14 @@ function parseAction(value: unknown): Action | null {
     case 'breakout':
     case 'breakoutSkip':
     case 'heistSkip':
+    case 'defenseReady':
       return { type: value.type, player };
+    case 'defenseBuild':
+      return isCount(value.cell) && isTowerKind(value.kind)
+        ? { type: 'defenseBuild', player, cell: value.cell, kind: value.kind }
+        : null;
+    case 'defenseUpgrade':
+      return isCount(value.cell) ? { type: 'defenseUpgrade', player, cell: value.cell } : null;
     case 'chaseResult':
       return typeof value.escaped === 'boolean'
         ? { type: 'chaseResult', player, escaped: value.escaped }
